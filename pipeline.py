@@ -48,7 +48,8 @@ def analyze_body(path: str, task: str = "auto",
                               px_per_m=px_per_m)
     meta = {"fps": b.fps, "n_frames": b.n_frames, "duration_s": b.duration_s,
             "body_detection_rate": b.detection_rate, "body_mode": b.mode,
-            "camera_motion_px": b.camera_motion_px, "task": res["task"]}
+            "camera_motion_px": b.camera_motion_px, "task": res["task"],
+            "frame_size": tuple(b.frame_size)}
     return {"features": res["features"], "meta": meta,
             "signals": res["signals"], "segments": res["segments"], "traces": b}
 

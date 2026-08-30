@@ -29,6 +29,18 @@ from .config import REFERENCE_NORMS
 # ─────────────────────────────────────────────────────────────────────────
 #  Outils communs
 # ─────────────────────────────────────────────────────────────────────────
+def _note_mouvement(cle: str, valeur: float) -> float:
+    """Même échelle 0–100, mais sur les normes des mesures génériques."""
+    norme = NORMES_MOUVEMENT.get(cle)
+    if norme is None or valeur is None or not np.isfinite(valeur):
+        return float("nan")
+    mu, sd, sens = norme
+    z = dsp.robust_z(valeur, mu, sd, sens)
+    if not np.isfinite(z):
+        return float("nan")
+    return float(np.clip(50 + 20 * z, 0, 100))
+
+
 def _note(cle: str, valeur: float, attendu: Optional[float] = None) -> float:
     """0 à 100 à partir de l'écart à la référence, dans le bon sens.
 
@@ -57,13 +69,82 @@ def vitesse_attendue(age: Optional[float]) -> float:
     return float(np.interp(age, ages, vits))
 
 
+#  Certaines grandeurs ont un équivalent mesurable autrement : de profil, la
+#  longueur de pas se lit sur l'écartement des pieds plutôt que sur la vitesse.
+EQUIVALENTS = {"step_length_stature": "step_length_spread_stature"}
+
+#  Tout mouvement n'a pas de pas. Quand la marche n'a rien donné, on lit les
+#  mêmes qualités sur les grandeurs génériques : amplitude, rythme, fluidité,
+#  régularité. Les échelles diffèrent, d'où une norme propre à chacune.
+#  Même convention que REFERENCE_NORMS : (moyenne, écart-type, sens),
+#  le sens valant +1 quand « plus grand » est favorable, −1 sinon.
+#  Repères calés sur des gestes de référence : balancement lent, flexions,
+#  gestes des bras, mouvement heurté. Ils valent pour la démonstration et
+#  seront réétalonnés sur des sujets réels.
+NORMES_MOUVEMENT = {
+    "move_amplitude_stature":    (0.55, 0.25, +1),
+    "move_peak_speed_stature":   (1.30, 0.50, +1),
+    "move_rate_cpm":             (55.0, 30.0, +1),
+    "move_cycle_cv_pct":         (9.0, 7.0, -1),
+    "move_sparc":                (-7.0, 3.5, +1),
+    "move_active_pct":           (62.0, 18.0, +1),
+}
+
+
+#  Un signal bruité peut produire une valeur absurde — un rapport harmonique à
+#  1944, une cadence à 400 pas par minute. Ces valeurs sont écartées du calcul
+#  et de l'affichage : mieux vaut une case vide qu'un chiffre qui décrédibilise.
+PLAGES_PLAUSIBLES = {
+    "gait_speed_m_s": (0.15, 2.5),
+    "cadence_spm": (30.0, 200.0),
+    "step_length_m": (0.10, 1.20),
+    "step_length_stature": (0.05, 0.95),
+    "step_time_cv_pct": (0.0, 60.0),
+    "stride_time_cv_pct": (0.0, 60.0),
+    "step_asymmetry_pct": (0.0, 60.0),
+    "harmonic_ratio": (0.2, 12.0),
+    "gait_sparc": (-30.0, 0.0),
+    "com_bob_stature_pct": (0.0, 25.0),
+    "turn_mean_dur_s": (0.2, 15.0),
+    "sway_rms_ap_mm": (0.5, 120.0),
+    "sway_rms_ml_mm": (0.5, 120.0),
+    "sts_mean_dur_s": (0.4, 12.0),
+    "move_amplitude_stature": (0.01, 3.0),
+    "move_peak_speed_stature": (0.02, 8.0),
+    "move_rate_cpm": (5.0, 250.0),
+    "move_cycle_cv_pct": (0.0, 90.0),
+    "move_sparc": (-40.0, 0.0),
+    "move_active_pct": (0.0, 100.0),
+}
+
+
+def plausible(cle: str, valeur) -> bool:
+    """La valeur est-elle dans une plage physiquement acceptable ?"""
+    if not isinstance(valeur, (int, float)) or not np.isfinite(valeur):
+        return False
+    bornes = PLAGES_PLAUSIBLES.get(cle)
+    if bornes is None:
+        return True
+    return bool(bornes[0] <= float(valeur) <= bornes[1])
+
+
+def _valeur(f: Dict[str, float], cle: str) -> float:
+    v = f.get(cle, float("nan"))
+    if not plausible(cle, v):
+        v = float("nan")
+    if not np.isfinite(v) and cle in EQUIVALENTS:
+        remplacant = f.get(EQUIVALENTS[cle], float("nan"))
+        v = remplacant if plausible(EQUIVALENTS[cle], remplacant) else float("nan")
+    return v
+
+
 def _agrege(f: Dict[str, float], poids: Dict[str, float],
             age: Optional[float] = None) -> Tuple[float, float, Dict[str, float]]:
     """Moyenne pondérée des notes disponibles, avec la couverture obtenue."""
     notes, ws, detail = [], [], {}
     attendus = {"gait_speed_m_s": vitesse_attendue(age)} if age else {}
     for cle, w in poids.items():
-        n = _note(cle, f.get(cle, float("nan")), attendus.get(cle))
+        n = _note(cle, _valeur(f, cle), attendus.get(cle))
         if np.isfinite(n):
             notes.append(n)
             ws.append(w)
@@ -88,10 +169,38 @@ POIDS_MOBILITE = {
 }
 
 
+POIDS_MOBILITE_LIBRE = {
+    "move_amplitude_stature": 0.40,
+    "move_peak_speed_stature": 0.35,
+    "move_active_pct": 0.25,
+}
+
+
+def _agrege_libre(f: Dict[str, float], poids: Dict[str, float]):
+    notes, ws, detail = [], [], {}
+    for cle, w in poids.items():
+        brut = f.get(cle, float("nan"))
+        n = _note_mouvement(cle, brut if plausible(cle, brut) else float("nan"))
+        if np.isfinite(n):
+            notes.append(n)
+            ws.append(w)
+            detail[cle] = round(n, 1)
+    if not notes:
+        return float("nan"), 0.0, {}
+    return (float(np.average(notes, weights=ws)),
+            float(sum(ws) / sum(poids.values())), detail)
+
+
 def bio_mobility(f: Dict[str, float], age: Optional[float] = None) -> Dict[str, object]:
     score, couv, detail = _agrege(f, POIDS_MOBILITE, age)
-    return {"score": score, "couverture": couv, "detail": detail,
-            "compare_age": bool(age), "unite": "/100", "nom": "Bio-Mobility Score"}
+    libre = False
+    if not np.isfinite(score) or couv < 0.25:      # pas de marche exploitable
+        s2, c2, d2 = _agrege_libre(f, POIDS_MOBILITE_LIBRE)
+        if np.isfinite(s2):
+            score, couv, detail, libre = s2, c2, d2, True
+    return {"score": score, "couverture": couv, "detail": detail, "libre": libre,
+            "compare_age": bool(age) and not libre,
+            "unite": "/100", "nom": "Bio-Mobility Score"}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -107,9 +216,21 @@ POIDS_CONTROLE = {
 }
 
 
+POIDS_CONTROLE_LIBRE = {
+    "move_cycle_cv_pct": 0.40,
+    "move_sparc": 0.35,
+    "move_rate_cpm": 0.25,
+}
+
+
 def neuroplasticity(f: Dict[str, float], age: Optional[float] = None) -> Dict[str, object]:
     score, couv, detail = _agrege(f, POIDS_CONTROLE, age)
-    return {"score": score, "couverture": couv, "detail": detail,
+    libre = False
+    if not np.isfinite(score) or couv < 0.25:
+        s2, c2, d2 = _agrege_libre(f, POIDS_CONTROLE_LIBRE)
+        if np.isfinite(s2):
+            score, couv, detail, libre = s2, c2, d2, True
+    return {"score": score, "couverture": couv, "detail": detail, "libre": libre,
             "unite": "/100", "nom": "Neuroplasticity Index"}
 
 
@@ -124,8 +245,26 @@ COURBE_AGE = [(25, 1.39), (35, 1.43), (45, 1.43), (55, 1.39),
               (65, 1.34), (75, 1.26), (85, 0.97), (95, 0.72)]
 
 
+def _vitesse_equivalente(f: Dict[str, float]) -> float:
+    """Vitesse « équivalente » d'un mouvement sans marche.
+
+    La vitesse de pointe du geste, rapportée à la stature, est convertie en
+    l'échelle de la vitesse de marche. C'est une correspondance grossière,
+    destinée à la démonstration : elle place le sujet sur la courbe sans
+    prétendre à la précision d'une mesure de marche.
+    """
+    p = f.get("move_peak_speed_stature", float("nan"))
+    if not np.isfinite(p):
+        return float("nan")
+    return float(np.clip(0.62 * p + 0.28, 0.45, 1.60))
+
+
 def kinetic_age(f: Dict[str, float], age_declare: Optional[float] = None) -> Dict[str, object]:
     v = f.get("gait_speed_m_s", float("nan"))
+    approx = False
+    if not np.isfinite(v):
+        v = _vitesse_equivalente(f)
+        approx = np.isfinite(v)
     if not np.isfinite(v):
         return {"age": float("nan"), "marge": float("nan"), "ecart": float("nan"),
                 "unite": "ans", "nom": "Kinetic Ageing Profile", "fiable": False}
@@ -152,9 +291,11 @@ def kinetic_age(f: Dict[str, float], age_declare: Optional[float] = None) -> Dic
         marge = 20.0                                  # la vitesse ne date plus
 
     ecart = float(age - age_declare) if (age_declare and np.isfinite(age_declare)) else float("nan")
+    if approx:
+        marge = max(marge, 12.0)                  # lecture indirecte : marge élargie
     return {"age": age, "marge": marge, "ecart": ecart, "plateau": plateau,
-            "unite": "ans", "nom": "Kinetic Ageing Profile",
-            "fiable": bool(np.isfinite(v) and not plateau)}
+            "approx": approx, "unite": "ans", "nom": "Kinetic Ageing Profile",
+            "fiable": bool(np.isfinite(v) and not plateau and not approx)}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -167,6 +308,8 @@ def vitality_margin(f: Dict[str, float], age: Optional[float] = None) -> Dict[st
     juste, mais elle compare à la population entière et non à ses pairs.
     """
     v = f.get("gait_speed_m_s", float("nan"))
+    if not np.isfinite(v):
+        v = _vitesse_equivalente(f)
     attendu = vitesse_attendue(age)
     if not np.isfinite(attendu):
         norme = REFERENCE_NORMS.get("gait_speed_m_s")

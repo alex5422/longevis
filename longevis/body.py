@@ -98,6 +98,11 @@ def extract_body(path: str, max_frames: int = 12000,
     if not (1.0 < fps < 240.0):
         fps = 30.0
 
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    if total > 0:
+        # Le modèle de fond a besoin de quelques images, mais sur une vidéo
+        # courte un amorçage fixe de 25 images en gâche une part notable.
+        warmup = int(min(warmup, max(4, total // 12)))
     sub = cv2.createBackgroundSubtractorMOG2(history=350, varThreshold=28,
                                              detectShadows=True)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -168,8 +173,15 @@ def extract_body(path: str, max_frames: int = 12000,
             area.append(float(person.sum() / 255.0))
             foot.append(float(y1))
             valid.append(True)
-            if preview is None and idx > warmup + 15:
-                preview = cv2.resize(frame, (W // 2, H // 2))
+            if preview is None and idx > warmup + 5:
+                vue = frame.copy()
+                cv2.rectangle(vue, (x0, y0), (x1, y1), (40, 220, 60), 2)
+                bande = int(y1 - 0.25 * h)
+                cv2.line(vue, (x0, bande), (x1, bande), (60, 160, 255), 1)
+                cv2.putText(vue, "silhouette detectee", (x0, max(16, y0 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (40, 220, 60), 1,
+                            cv2.LINE_AA)
+                preview = vue
             if torso_box is None and idx > warmup + 5 and h > 0.2 * H:
                 torso_box = (x0, y0, x1 - x0 + 1, h)
 

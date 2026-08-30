@@ -54,8 +54,18 @@ def segment_passes(cx: np.ndarray, fps: float, height_px: float
     calcul tirerait la vitesse de marche vers le bas.
     """
     v = _smooth(np.gradient(cx) * fps, fps, 1.5)
-    thresh = 0.25 * height_px                      # 25 % de la stature par seconde
-    moving = np.abs(v) > thresh
+
+    # Le seuil de « vitesse soutenue » est d'abord fixé à 25 % de la stature par
+    # seconde. Sur une marche lente, un cadrage large ou un couloir court, aucun
+    # trajet ne le franchit et toutes les mesures deviennent indisponibles — d'où
+    # des résultats entièrement vides. On le relâche donc par paliers plutôt que
+    # de ne rien renvoyer.
+    moving = np.abs(v) > 0.25 * height_px
+    for facteur in (0.25, 0.12, 0.06, 0.03):
+        candidat = np.abs(v) > facteur * height_px
+        if candidat.sum() >= max(int(0.8 * fps), 8):
+            moving = candidat
+            break
 
     def _runs(mask: np.ndarray) -> List[Tuple[int, int]]:
         out, start = [], None
@@ -402,6 +412,59 @@ def sit_to_stand(height_px: np.ndarray, fps: float) -> Dict[str, float]:
 # --------------------------------------------------------------------------- #
 # Chaîne complète
 # --------------------------------------------------------------------------- #
+def mouvement_libre(cx: np.ndarray, cy: np.ndarray, spread: np.ndarray,
+                    hh: np.ndarray, fps: float, med_h: float) -> Dict[str, float]:
+    """Ce qu'on peut mesurer d'un mouvement quelconque.
+
+    Gymnastique, danse, tai-chi, exercice de rééducation, gestes assis : rien
+    de tout cela n'a de pas ni de lever de chaise, mais tout a une amplitude,
+    un rythme, une fluidité et une régularité. Ces quatre-là ne supposent
+    aucune tâche particulière — seulement un corps qui bouge.
+    """
+    out: Dict[str, float] = {}
+    n = int(min(len(cx), len(cy)))
+    if n < int(2 * fps) or med_h <= 0:
+        return out
+
+    candidats = {"horizontal": np.asarray(cx, float), "vertical": np.asarray(cy, float)}
+    if len(spread) == n:
+        candidats["membres"] = np.asarray(spread, float)
+    meilleur, etendue = None, 0.0
+    for nom, sig in candidats.items():
+        e = float(np.percentile(sig, 97) - np.percentile(sig, 3))
+        if e > etendue:
+            meilleur, etendue = nom, e
+    if meilleur is None:
+        return out
+    s = candidats[meilleur]
+
+    out["move_source"] = meilleur
+    out["move_amplitude_stature"] = float(etendue / med_h)
+
+    v = np.abs(np.gradient(s) * fps)
+    out["move_peak_speed_stature"] = float(np.percentile(v, 95) / med_h)
+    out["move_mean_speed_stature"] = float(np.mean(v) / med_h)
+    out["move_sparc"] = sparc(v, fps)
+    out["move_jerk_norm"] = normalized_jerk(s, fps)
+
+    c = dsp.detrend_smoothness(s, lam=80.0)
+    f0, _, _, _ = dsp.dominant_frequency(c, fps, (0.15, 3.5), nperseg_s=6.0)
+    if np.isfinite(f0) and f0 > 0:
+        out["move_rate_hz"] = float(f0)
+        out["move_rate_cpm"] = float(f0 * 60.0)
+        niveau = float(np.median(c))
+        croise = np.flatnonzero((c[:-1] <= niveau) & (c[1:] > niveau)) / fps
+        if croise.size >= 3:
+            d = np.diff(croise)
+            if d.size and np.mean(d) > 0:
+                out["move_cycle_cv_pct"] = float(100.0 * np.std(d) / np.mean(d))
+                out["move_n_cycles"] = float(croise.size - 1)
+    seuil = max(0.02 * med_h, 0.25 * float(np.median(v)))
+    out["move_active_pct"] = float(100.0 * np.mean(v > seuil))
+    return out
+
+
+
 def detect_task(b: BodyTraces) -> str:
     if b.mode == "suivi" or b.detection_rate < 0.15:
         return "posture"                             # sujet immobile, suivi d'imagette
@@ -414,8 +477,33 @@ def detect_task(b: BodyTraces) -> str:
     # même si sa silhouette change de hauteur (boiterie, port de charge).
     if span > 1.2 * med_h:
         return "marche"
+    # Un couloir court, un cadrage serré ou une personne âgée qui avance de
+    # deux mètres ne franchissent pas ce seuil, et l'enregistrement était
+    # jusqu'ici déclaré « posture » : plus aucune mesure de marche. On cherche
+    # donc l'alternance des jambes avant de conclure à l'immobilité.
+    try:
+        sp = _clean(b.leg_spread, b.valid)
+        # Un squat, un balancement du tronc ou un geste des bras ne font pas
+        # varier l'écartement des jambes. Sans cette modulation, les « pas »
+        # détectés ne sont que du bruit mis en forme.
+        modulation = float(np.percentile(sp, 97) - np.percentile(sp, 3)) / max(1e-6, med_h)
+        pas, f0 = step_events(sp, b.fps)
+        if modulation >= 0.04 and pas.size >= 4 and np.isfinite(f0) and 0.5 <= f0 <= 3.5:
+            return "marche"
+    except (ValueError, IndexError):
+        pass
     if h_var > 0.20:
         return "leve"
+    # Un corps qui bouge franchement sans pas ni lever : gymnastique, danse,
+    # exercice, gestes assis. Il ne s'agit pas d'une posture immobile, et le
+    # traiter comme telle ne mesurerait qu'un ballant qui n'existe pas.
+    try:
+        cy = _clean(b.centroid[:, 1], b.valid)
+        v = np.abs(np.gradient(cx) * b.fps) + np.abs(np.gradient(cy) * b.fps)
+        if float(np.percentile(v, 90)) > 0.06 * med_h:
+            return "mouvement"
+    except (ValueError, IndexError):
+        pass
     return "posture"
 
 
@@ -462,7 +550,19 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
     else:
         feats["turn_mean_dur_s"] = feats["turn_max_dur_s"] = float("nan")
 
-    if task == "marche" and passes:
+    if task == "marche" and \
+            float(np.percentile(spread, 97) - np.percentile(spread, 3)) < 0.04 * med_h \
+            and not passes:
+        task = "mouvement"                    # ni pas ni trajet : geste libre
+        feats["task_detected"] = task
+
+    if task == "marche":
+        # Sans trajet franc — marche sur place, couloir court — on analyse
+        # l'enregistrement entier : cadence, régularité, symétrie et harmonie
+        # ne dépendent pas de la distance parcourue. Seules la vitesse et la
+        # longueur de pas en dépendent, et elles restent alors indisponibles.
+        fenetres = passes if passes else [(0, int(cx.size))]
+        feats["marche_sur_place"] = 0.0 if passes else 1.0
         # Vitesse : trajets rectilignes uniquement, bords rognés pour écarter
         # les phases d'accélération et de freinage autour des demi-tours.
         speeds, seg_sparc = [], []
@@ -482,12 +582,43 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
         feats["gait_speed_stature_s"] = float(v_px / med_h) if np.isfinite(v_px) else float("nan")
         feats["gait_sparc"] = float(np.median(seg_sparc)) if seg_sparc else float("nan")
 
-        timing = gait_timing(spread, fps, passes)
+        timing = gait_timing(spread, fps, fenetres)
         step_hz = timing.pop("step_hz", float("nan"))
         feats["cadence_spm"] = float(step_hz * 60.0) if np.isfinite(step_hz) else float("nan")
         feats.update(timing)
         stride_hz = step_hz / 2.0 if np.isfinite(step_hz) else float("nan")
         feats["harmonic_ratio"] = harmonic_ratio(cy, fps, stride_hz)
+
+        # ── longueur de pas mesurée directement sur la silhouette ──────────
+        # De profil, l'écartement des pieds au double appui EST la longueur du
+        # pas : on peut donc la mesurer sans que le sujet traverse le champ, et
+        # en déduire une vitesse là où le déplacement ne donne rien (couloir
+        # court, marche sur place, plan serré). Quand les deux sont disponibles,
+        # la mesure par déplacement reste prioritaire : elle ne suppose pas que
+        # la caméra soit de profil.
+        # Amplitude mesurée sur le signal brut : le lissage arrondit le sommet
+        # du cycle et rabotait la longueur de pas de dix pour cent. Les
+        # percentiles extrêmes suffisent à écarter le bruit.
+        sp = spread
+        if sp.size > int(fps):
+            # p97 − p3 plutôt que p92 − p8 : les percentiles resserrés
+            # amputaient le sommet du cycle et sous-estimaient la longueur de
+            # pas d'environ 15 %, donc la vitesse d'autant.
+            amp_px = float(np.percentile(sp, 97) - np.percentile(sp, 3))
+            if np.isfinite(amp_px) and amp_px > 0.02 * med_h:
+                feats["step_length_spread_px"] = amp_px
+                feats["step_length_spread_stature"] = float(amp_px / med_h)
+                if not np.isfinite(feats.get("gait_speed_px_s", float("nan"))) \
+                        and np.isfinite(step_hz) and step_hz > 0:
+                    v_est = amp_px * step_hz
+                    feats["gait_speed_px_s"] = float(v_est)
+                    feats["gait_speed_stature_s"] = float(v_est / med_h)
+                    if scale:
+                        feats["gait_speed_m_s"] = float(v_est / scale)
+                    feats["speed_source"] = "amplitude des pas (vue de profil)"
+                    v_px = float(v_est)
+                else:
+                    feats.setdefault("speed_source", "déplacement dans le champ")
 
         if np.isfinite(feats.get("cadence_spm", np.nan)) and np.isfinite(v_px) and step_hz > 0:
             step_len_px = v_px / step_hz
@@ -501,13 +632,16 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
         feats["com_bob_stature_pct"] = float(feats["com_bob_px"] / med_h * 100.0)
         # Secousse normalisée par trajet : elle croît en durée^5, une valeur
         # calculée sur l'enregistrement entier ne serait comparable à rien.
-        jerks = [normalized_jerk(cy[a:b1], fps) for a, b1 in passes if b1 - a > int(1.2 * fps)]
+        jerks = [normalized_jerk(cy[a:b1], fps) for a, b1 in fenetres if b1 - a > int(1.2 * fps)]
         jerks = [j for j in jerks if np.isfinite(j)]
         feats["gait_jerk_norm"] = float(np.median(jerks)) if jerks else float("nan")
 
         if np.isfinite(feats.get("gait_speed_m_s", np.nan)):
             v = feats["gait_speed_m_s"]
             feats["gait_speed_band"] = next(lab for th, lab in SPEED_THRESHOLDS if v < th)
+
+    elif task == "mouvement":
+        feats.update(mouvement_libre(cx, cy, spread, hh, fps, med_h))
 
     elif task == "leve":
         feats.update(sit_to_stand(hh, fps))
@@ -528,6 +662,10 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
         feats.update(postural_sway(tx, ty, fps, scale))
         feats["sway_source"] = source
         feats["sway_jerk_norm"] = normalized_jerk(ty, fps)
+
+    if task in ("marche", "leve"):
+        for k, v in mouvement_libre(cx, cy, spread, hh, fps, med_h).items():
+            feats.setdefault(k, v)
 
     feats["scale_source"] = scale_source
 

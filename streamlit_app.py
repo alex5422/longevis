@@ -22,7 +22,21 @@ import traceback
 import numpy as np
 import streamlit as st
 
-from longevis import body, kinexa, pipeline
+from longevis import body, pipeline
+
+try:                                   # le module des biomarqueurs peut manquer
+    from longevis import kinexa        # si le dépôt n'a pas encore été mis à jour
+except ImportError:                    # la page continue de fonctionner sans lui
+    kinexa = None
+try:                                   # le rejeu incrusté, idem
+    from longevis import hologramme
+except ImportError:
+    hologramme = None
+try:                                   # les figures de vitalité
+    from longevis import vue
+except ImportError:
+    vue = None
+import streamlit.components.v1 as components
 from longevis.config import METHOD_NOISE_FLOOR, REFERENCE_NORMS
 from longevis.report import LABELS, UNITS
 
@@ -57,6 +71,10 @@ html,body,[class*="css"]{font-family:var(--f);color:var(--text);
  border:1px solid var(--edge);border-radius:100px;padding:6px 14px;margin:0 0 22px}
 .iv-tag i{width:6px;height:6px;border-radius:50%;background:var(--a2);
  box-shadow:0 0 10px var(--a2);font-style:normal}
+.iv-inst{display:inline-block;float:right;border:1px solid rgba(249,115,22,.5);
+ border-radius:100px;padding:6px 16px;font-size:11px;letter-spacing:.19em;
+ text-transform:uppercase;color:#F97316;margin:0 0 22px}
+@media (max-width:760px){.iv-inst{float:none;display:block;margin-top:-8px}}
 .iv-title{font-size:clamp(40px,6.4vw,74px);font-weight:600;letter-spacing:-.045em;
  line-height:1.02;margin:0;
  background:linear-gradient(120deg,#FFFFFF 18%,#C9D4FF 52%,#9FE9E0 88%);
@@ -193,6 +211,10 @@ GROUPES = [
     ("Équilibre debout", ["sway_rms_ap_mm", "sway_rms_ml_mm", "sway_path_mm_s",
                           "sway_area_mm2", "sway_f95_hz"]),
     ("Transfert assis-debout", ["sts_count", "sts_mean_dur_s"]),
+    ("Mouvement, toutes tâches", ["move_amplitude_stature", "move_peak_speed_stature",
+                                  "move_mean_speed_stature", "move_rate_cpm",
+                                  "move_cycle_cv_pct", "move_n_cycles", "move_sparc",
+                                  "move_jerk_norm", "move_active_pct"]),
     ("Acquisition", ["silhouette_height_px", "px_per_m", "body_detection_rate",
                      "camera_motion_px"]),
 ]
@@ -352,6 +374,11 @@ with st.sidebar:
     echelle = st.number_input("Échelle (pixels par mètre)", value=0.0,
                               min_value=0.0, step=1.0,
                               help="Plus fiable que la taille. 0 = utiliser la taille.")
+    taille_rejeu = st.select_slider("Taille du rejeu",
+                                    options=["compact", "normal", "grand", "immense"],
+                                    value="grand",
+                                    help="Le rejeu s'agrandit aussi en plein écran, "
+                                         "par le bouton ⛶ dans l'image.")
     lancer = st.button("Analyser", type="primary", disabled=fichier is None,
                        use_container_width=True)
     st.markdown('<div class="iv-msg" style="font-size:13px;margin-top:26px">'
@@ -360,7 +387,8 @@ with st.sidebar:
                 'allers-retours, 30 secondes au moins. Fond dégagé.</div>',
                 unsafe_allow_html=True)
 
-st.markdown('<span class="iv-tag"><i></i>Analyse vidéo de la marche</span>'
+st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality</span>'
+            '<span class="iv-tag"><i></i>Analyse vidéo de la marche</span>'
             '<h1 class="iv-title">LongeVis</h1>'
             '<p class="iv-lede">Une vidéo de quelqu\'un qui marche suffit à mesurer '
             'sa vitesse, sa cadence, l\'amplitude de ses pas et ce que lui coûtent '
@@ -403,7 +431,7 @@ else:
         else:
             st.markdown(scene_repos(), unsafe_allow_html=True)
 
-        if not np.isfinite(g("gait_speed_m_s")):
+        if not (np.isfinite(g("gait_speed_m_s")) or np.isfinite(g("cadence_spm"))):
             st.markdown('<div class="iv-msg iv-msg--stop"><b>Aucune marche '
                         'mesurable dans cette vidéo.</b> Les causes, par fréquence :'
                         '<ol><li>Le sujet ne <b>traverse</b> pas l\'image. Il faut '
@@ -415,10 +443,18 @@ else:
                         '<li>Vidéo trop courte : 30 secondes au moins.</li></ol>'
                         '</div>', unsafe_allow_html=True)
 
-        bio = kinexa.biomarqueurs(f, meta, age if age > 0 else None)
-        bm, npx, ka, vm = (bio["bio_mobility"], bio["neuroplasticity"],
-                           bio["kinetic_age"], bio["vitality_margin"])
+        bio = kinexa.biomarqueurs(f, meta, age if age > 0 else None) if kinexa else None
+        if bio is None:
+            st.markdown('<div class="iv-msg">Module des biomarqueurs absent : '
+                        'déposez <b>longevis/kinexa.py</b> dans le dépôt pour '
+                        'afficher les quatre lectures de l\'Institut.</div>',
+                        unsafe_allow_html=True)
+        bm, npx, ka, vm = ((bio["bio_mobility"], bio["neuroplasticity"],
+                            bio["kinetic_age"], bio["vitality_margin"])
+                           if bio else ({}, {}, {}, {}))
         ref = ("classe d'âge" if bm.get("compare_age") else "population adulte")
+        if bm.get("libre"):
+            ref = "amplitude, vigueur et occupation du geste"
         ecart = ka.get("ecart", float("nan"))
         if np.isfinite(ecart):
             sens = "de plus" if ecart > 0 else "de moins"
@@ -426,31 +462,89 @@ else:
         elif ka.get("plateau"):
             note_age = "avant 65 ans, la vitesse ne date pas une personne"
         else:
-            note_age = "lu dans la vitesse de marche"
+            note_age = ("lu sur la vigueur du geste" if ka.get("approx")
+                        else "lu dans la vitesse de marche")
         att = vm.get("attendu", float("nan"))
         note_vm = (f'attendu {att:.2f} m/s pour '
                    + ("cet âge" if vm.get("compare_age") else "un adulte")
                    ) if np.isfinite(att) else "vitesse non mesurée"
 
-        st.markdown('<p class="iv-h">Biomarqueurs · Kinexa Longevity Institute</p>',
-                    unsafe_allow_html=True)
-        st.markdown('<div class="iv-grid">'
-                    + carte("Bio-Mobility Score", bm["score"], "/100",
-                            f'{ref} · couverture {100*bm["couverture"]:.0f} %',
-                            hero=True, dec=0)
-                    + carte("Neuroplasticity Index", npx["score"], "/100",
-                            f'régularité et fluidité · couverture '
-                            f'{100*npx["couverture"]:.0f} %', dec=0)
-                    + carte("Kinetic Ageing Profile", ka["age"],
-                            (f' ans ± {ka["marge"]:.0f}'
-                             if np.isfinite(ka.get("marge", float("nan"))) else " ans"),
-                            note_age, dec=0)
-                    + carte("Vitality Margin", vm["marge_pct"], "%", note_vm, dec=0)
-                    + '</div>', unsafe_allow_html=True)
-        st.markdown('<p class="iv-cap" style="margin:-4px 0 18px">Agrégats lisibles, '
-                    'sans valeur diagnostique. La couverture indique la part de mesures '
-                    'réellement disponibles derrière chaque score.</p>',
-                    unsafe_allow_html=True)
+        src = str(f.get("speed_source", ""))
+
+        # ── rejeu de la vidéo avec les chiffres incrustés ──────────────────
+        if hologramme is not None and bio:
+            try:
+                html = hologramme.rejeu(chemin, bio, f, res.get("_signals", {}), meta)
+            except Exception:
+                html = None
+            if html:
+                st.markdown('<p class="iv-h">Rejeu incrusté</p>', unsafe_allow_html=True)
+                facteur = {"compact": 0.7, "normal": 0.9,
+                           "grand": 1.15, "immense": 1.5}.get(taille_rejeu, 1.0)
+                components.html(html,
+                                height=int(hologramme.hauteur_composant(meta) * facteur),
+                                scrolling=False)
+                st.markdown('<p class="iv-cap" style="margin:-6px 0 22px">'
+                            'Les quatre lectures montent à l\'ouverture ; la vitesse et '
+                            'le compteur de pas suivent l\'image.</p>',
+                            unsafe_allow_html=True)
+            else:
+                st.markdown('<p class="iv-cap">Vidéo trop lourde pour le rejeu incrusté '
+                            '(28 Mo maximum). Les mesures restent complètes.</p>',
+                            unsafe_allow_html=True)
+
+        if bio:
+            st.markdown('<p class="iv-h">Biomarqueurs · Kinexa Longevity Institute</p>',
+                            unsafe_allow_html=True)
+            st.markdown('<div class="iv-grid">'
+                        + carte("Bio-Mobility Score", bm["score"], "/100",
+                                f'{ref} · couverture {100*bm["couverture"]:.0f} %',
+                                hero=True, dec=0)
+                        + carte("Neuroplasticity Index", npx["score"], "/100",
+                                f'régularité et fluidité · couverture '
+                                f'{100*npx["couverture"]:.0f} %', dec=0)
+                        + carte("Kinetic Ageing Profile", ka["age"],
+                                (f' ans ± {ka["marge"]:.0f}'
+                                 if np.isfinite(ka.get("marge", float("nan"))) else " ans"),
+                                note_age, dec=0)
+                        + carte("Vitality Margin", vm["marge_pct"], "%", note_vm, dec=0)
+                        + '</div>', unsafe_allow_html=True)
+            st.markdown('<p class="iv-cap" style="margin:-4px 0 18px">Agrégats lisibles, '
+                        'sans valeur diagnostique. La couverture indique la part de mesures '
+                        'réellement disponibles derrière chaque score.</p>',
+                        unsafe_allow_html=True)
+
+        # ── profil de vitalité : courbe d'âge, radar, frise ────────────────
+        if vue is not None and bio:
+            st.markdown('<p class="iv-h">Profil de vitalité</p>', unsafe_allow_html=True)
+            st.markdown('<div class="iv-stage" style="margin-top:0;padding:6px 4px">'
+                        + vue.courbe_age(kinexa.COURBE_AGE, g("gait_speed_m_s"),
+                                         ka.get("age"), age if age > 0 else None)
+                        + '</div>', unsafe_allow_html=True)
+            st.markdown('<p class="iv-cap" style="margin:8px 0 20px">'
+                        'La courbe est la vitesse confortable attendue par décennie ; '
+                        'la bande, la dispersion habituelle. Le point est le sujet, '
+                        'le trait vertical son âge locomoteur.</p>',
+                        unsafe_allow_html=True)
+
+            colr, colf = st.columns([1, 1.35], gap="large")
+            with colr:
+                svg = vue.radar(vue.axes_vitalite(f, bio))
+                if svg:
+                    st.markdown('<div class="iv-stage" style="margin-top:0;padding:4px">'
+                                + svg + '</div>', unsafe_allow_html=True)
+            with colf:
+                seg = res.get("segments") or {}
+                fr = vue.frise(seg.get("passes", []), seg.get("turns", []),
+                               int(meta.get("n_frames") or 0),
+                               float(meta.get("fps") or 25.0))
+                if fr:
+                    st.markdown('<div class="iv-stage" style="margin-top:0;padding:4px">'
+                                + fr + '</div>', unsafe_allow_html=True)
+                st.markdown('<p class="iv-cap">Bleu : les trajets rectilignes. '
+                            'Violet : les demi-tours, dont la durée est le marqueur '
+                            'le plus discriminant du lever-marcher chronométré.</p>',
+                            unsafe_allow_html=True)
 
         st.markdown('<p class="iv-h">Mesures principales</p>', unsafe_allow_html=True)
         st.markdown('<div class="iv-grid">'
@@ -500,7 +594,7 @@ else:
                         + carte("Trajets", g("n_passes"), "", dec=0)
                         + carte("Échelle", g("px_per_m"), "px/m", dec=0)
                         + '</div>', unsafe_allow_html=True)
-            for a in ([] if traces.camera_motion_px <= 0.5 else
+            for a in ([] if True else
                       ["La caméra bouge. Posez-la sur un support stable."]) + \
                      ([] if traces.detection_rate >= 0.6 else
                       ["Corps mal détecté. Reculez, dégagez le fond."]) + \
@@ -509,6 +603,44 @@ else:
                        "Pour la marche, filmez des allers-retours."]):
                 st.markdown(f'<div class="iv-msg iv-msg--warn">{a}</div>',
                             unsafe_allow_html=True)
+            conseils = ([] if traces.camera_motion_px <= 0.5 else
+                        ["Caméra en mouvement : posez-la sur un support."]) + \
+                       ([] if traces.detection_rate >= 0.6 else
+                        ["Silhouette peu détectée : reculez, dégagez le fond."])
+            if conseils:
+                st.markdown('<p class="iv-cap">' + ' · '.join(conseils) + '</p>',
+                            unsafe_allow_html=True)
+
+        import json as _json
+        mesurable = {k: (round(float(v), 4) if isinstance(v, (int, float)) else v)
+                     for k, v in f.items()
+                     if isinstance(v, (int, float, str))}
+        mesurable["_meta"] = {k: v for k, v in meta.items()
+                              if isinstance(v, (int, float, str))}
+        csv = "mesure;valeur\n" + "\n".join(
+            f"{k};{v}" for k, v in sorted(mesurable.items()) if k != "_meta")
+        cta, ctb = st.columns(2)
+        cta.download_button("⬇ mesures (CSV)", csv, file_name="kinexa_mesures.csv",
+                            mime="text/csv", use_container_width=True)
+        ctb.download_button("⬇ tout (JSON)", _json.dumps(mesurable, ensure_ascii=False,
+                                                          indent=1),
+                            file_name="kinexa_mesures.json", mime="application/json",
+                            use_container_width=True)
+
+        with st.expander("Détail des scores"):
+            for titre, bloc in [("Bio-Mobility Score", bm), ("Neuroplasticity Index", npx)]:
+                d = (bloc or {}).get("detail") or {}
+                if not d:
+                    continue
+                st.markdown(f'<p class="iv-lab" style="margin:6px 0 4px">{titre} · '
+                            f'couverture {100*(bloc.get("couverture") or 0):.0f} %</p>',
+                            unsafe_allow_html=True)
+                st.markdown('<table class="iv-tbl"><tbody>' + "".join(
+                    f'<tr><td>{LABELS.get(k, k)}</td>'
+                    f'<td class="iv-v">{v:.0f}<span class="iv-r"> / 100</span></td></tr>'
+                    for k, v in d.items()) + '</tbody></table>', unsafe_allow_html=True)
+            st.caption("Chaque marqueur est noté sur 100 par rapport à sa référence, "
+                       "puis pondéré. Les marqueurs absents ne pèsent pas.")
 
         with st.expander("Toutes les mesures"):
             L = ['<table class="iv-tbl"><thead><tr><th>Mesure</th><th>Valeur</th>'

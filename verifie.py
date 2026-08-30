@@ -179,6 +179,21 @@ def _rejeu_donnees():
     assert "vmax" in d, "échelle de vigueur absente"
     assert "249,115,22" in html, "la teinte de vigueur ne monte pas jusqu'à l'orange"
     assert "box.style.display = 'none'" in html, "le réticule reste affiché sans suivi"
+    #  les chiffres doivent être grands, et grandir avec l'écran
+    import re as _re
+    for sel, mini in [(".kx-val{font-size:clamp(", 38), (".kx-live b{display:block;font-size:clamp(", 46)]:
+        i = html.find(sel)
+        assert i > 0, "taille de " + sel + " introuvable"
+        m = _re.search(r"clamp\((\d+)px,([\d.]+)vw,(\d+)px\)", html[i:i + 160])
+        assert m, "taille non lisible pour " + sel
+        assert int(m.group(1)) >= mini, "%s trop petit : %spx" % (sel, m.group(1))
+        assert int(m.group(3)) >= 80, "%s ne grandit pas assez : %spx" % (sel, m.group(3))
+        assert float(m.group(2)) > 0, "%s ne suit pas la largeur" % sel
+    assert html.count("text-shadow:0 0 1") >= 2, "les chiffres n'ont plus de halo"
+    m2 = _re.search(r"\.kx-lab\{font-size:clamp\((\d+)px,", html)
+    assert m2 and int(m2.group(1)) >= 12, "les intitulés des index sont restés petits"
+    assert 'class="petit"' in html, "le compteur de pas n'a plus sa taille propre"
+    assert "font-size:22px" not in html, "une taille fixe subsiste dans la balise"
     assert "ouvert" in html, "le panneau ne se dévoile pas"
     assert len(d["metriques"]) >= 8, "%d métriques seulement" % len(d["metriques"])
     noms = [m["nom"] for m in d["metriques"]]
@@ -214,6 +229,117 @@ try:
     os.remove(FAUSSE)
 except OSError:
     pass
+
+
+print("── la musique naît du mouvement ──")
+
+
+def _partition(**kw):
+    f = mesures(**kw)
+    f["px_per_m"] = 140.
+    b = kinexa.biomarqueurs(f, None, kw.pop("age", 70))
+    n = 360
+    sig = {"body_cx": (200 + np.linspace(0, 300, n)).tolist(),
+           "body_spread": (20 + 18 * np.abs(np.sin(np.linspace(0, 20, n)))).tolist(),
+           "body_fps": 30.}
+    serie = hologramme._serie(sig, 30., 12., (640, 360))
+    return hologramme.musique(serie, f, b, 12.), f, b
+
+
+def _partition_complete():
+    M, f, b = _partition()
+    assert M, "aucune partition"
+    for cle in ("tempo", "mode", "tonique", "accords", "notes", "detune"):
+        assert cle in M, cle + " absent de la partition"
+    assert 46 <= M["tempo"] <= 132, "tempo hors du raisonnable : %s" % M["tempo"]
+    assert M["mode"] in hologramme.MODES, "mode inconnu : " + M["mode"]
+    assert len(M["accords"]) >= 3, "%d accords" % len(M["accords"])
+    assert len(M["notes"]) >= 3, "%d notes" % len(M["notes"])
+
+
+def _accords_enchaines():
+    M, f, b = _partition()
+    fin = 0.0
+    for a in M["accords"]:
+        assert a["t"] >= fin - 1e-6, "les accords se chevauchent"
+        assert 0.5 <= a["d"] <= 6.0, "durée d'accord aberrante : %s" % a["d"]
+        assert len(a["n"]) == 3, "un accord n'a pas trois sons"
+        assert a["b"] < min(a["n"]), "la basse n'est pas sous l'accord"
+        fin = a["t"] + a["d"]
+    assert M["accords"][0]["t"] == 0.0, "la musique ne commence pas avec la vidéo"
+
+
+def _notes_dans_accord():
+    M, f, b = _partition()
+    for nt in M["notes"]:
+        acc = [a for a in M["accords"] if a["t"] <= nt["t"] < a["t"] + a["d"]]
+        assert acc, "une note tombe hors de tout accord"
+        assert (nt["p"] - 12) % 12 in [x % 12 for x in acc[0]["n"]] or \
+               (nt["p"] - 24) % 12 in [x % 12 for x in acc[0]["n"]], \
+               "une note est étrangère à son accord"
+        assert 30 <= nt["p"] <= 100, "note hors du registre : %s" % nt["p"]
+
+
+def _mode_suit_le_controle():
+    clair = hologramme._mode_de(80)
+    sombre = hologramme._mode_de(25)
+    assert clair == "lydien" and sombre == "eolien", "%s / %s" % (clair, sombre)
+    ordre = ["lydien", "ionien", "dorien", "eolien"]
+    precedents = [hologramme._mode_de(x) for x in (80, 60, 45, 25)]
+    assert precedents == ordre, "la couleur ne suit pas le contrôle : %s" % precedents
+
+
+def _juste_quand_regulier():
+    reg, _, _ = _partition(cv=1.5)
+    heurte, _, _ = _partition(cv=22)
+    assert reg["detune"] < heurte["detune"], \
+        "un geste heurté devrait sonner moins juste (%.1f contre %.1f)" % (
+            reg["detune"], heurte["detune"])
+    assert reg["detune"] <= 6, "un geste régulier ne doit pas se désaccorder"
+    assert heurte["detune"] <= 32, "désaccord excessif"
+
+
+def _tempo_suit_la_cadence():
+    lent, _, _ = _partition(cadence=64, amp_pas_m=0.5)
+    vif, _, _ = _partition(cadence=112, amp_pas_m=0.5)
+    assert vif["tempo"] > lent["tempo"], "le pouls ne suit pas la cadence (%.0f / %.0f)" % (
+        lent["tempo"], vif["tempo"])
+
+
+def _musique_dans_le_lecteur():
+    open(FAUSSE, "wb").write(os.urandom(30000))
+    f = mesures()
+    f["px_per_m"] = 140.
+    n = 360
+    sig = {"body_cx": (200 + np.linspace(0, 300, n)).tolist(),
+           "body_spread": (20 + 18 * np.abs(np.sin(np.linspace(0, 20, n)))).tolist(),
+           "body_fps": 30.}
+    html = hologramme.rejeu(FAUSSE, kinexa.biomarqueurs(f, None, 70), f, sig,
+                            {"fps": 30., "duration_s": 12., "frame_size": (640, 360)})
+    d = json.loads(re.search(r"var D = (\{.*?\});", html, re.S).group(1))
+    assert d.get("musique", {}).get("accords"), "la partition n'est pas embarquée"
+    assert "kxson" in html, "bouton du son absent"
+    assert "AudioContext" in html, "moteur sonore absent"
+    assert "createDelay" in html, "l'écho a disparu"
+    assert "v.paused" in html, "le son continue quand la vidéo est arrêtée"
+    assert "rebouclé" in html, "la boucle ne remet pas la partition à zéro"
+    #  le son ne doit jamais démarrer seul
+    i = html.find("bs.addEventListener('click'")
+    assert i > 0, "le son ne démarre pas sur un geste de l'utilisateur"
+    assert "joue = false" in html, "le son n'est pas silencieux au départ"
+    try:
+        os.remove(FAUSSE)
+    except OSError:
+        pass
+
+
+t("la partition est complète", _partition_complete)
+t("les accords s'enchaînent sans se chevaucher", _accords_enchaines)
+t("chaque note appartient à son accord", _notes_dans_accord)
+t("la couleur du mode suit la qualité du contrôle", _mode_suit_le_controle)
+t("un geste régulier sonne plus juste qu'un geste heurté", _juste_quand_regulier)
+t("le pouls de la musique suit la cadence", _tempo_suit_la_cadence)
+t("le lecteur embarque la partition, muet par défaut", _musique_dans_le_lecteur)
 
 
 print("── les valeurs aberrantes sont écartées ──")

@@ -95,7 +95,157 @@ def hauteur_composant(meta: Dict[str, object], largeur: int = 900) -> int:
     except (TypeError, ValueError, IndexError):
         rapport = 9 / 16
     rapport = min(max(rapport, 0.4), 1.9)          # ni panoramique ni colonne
-    return int(largeur * rapport) + 130
+    return int(largeur * rapport) + 170
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────
+#  La musique du mouvement
+#
+#  Le corps écrit la partition. Rien n'est plaqué par-dessus : le tempo naît
+#  de la cadence mesurée, le mode de la qualité du contrôle, les accords des
+#  accents et des repos du geste, et chaque note tombe sur un pas.
+#
+#  Le résultat doit sonner harmonieux quand le mouvement est ample et
+#  régulier, et se ternir quand il est heurté — c'est là le retour.
+# ─────────────────────────────────────────────────────────────────────────
+
+#  Trois couleurs, de la plus lumineuse à la plus grave.
+MODES = {
+    "lydien":  [0, 2, 4, 6, 7, 9, 11],
+    "ionien":  [0, 2, 4, 5, 7, 9, 11],
+    "dorien":  [0, 2, 3, 5, 7, 9, 10],
+    "eolien":  [0, 2, 3, 5, 7, 8, 10],
+}
+
+#  Degrés de la marche harmonique : I, V, vi, IV — l'enchaînement le plus
+#  simple qui sonne juste dans tous les modes ci-dessus.
+DEGRES = {"I": 0, "V": 4, "vi": 5, "IV": 3}
+
+
+def _mode_de(score: float) -> str:
+    """Le contrôle du geste choisit la couleur de l'harmonie."""
+    if not isinstance(score, (int, float)) or not np.isfinite(score):
+        return "ionien"
+    if score >= 72:
+        return "lydien"
+    if score >= 56:
+        return "ionien"
+    if score >= 40:
+        return "dorien"
+    return "eolien"
+
+
+def _tempo_de(features: Dict[str, float]) -> float:
+    """Le pouls de la musique est celui du corps."""
+    for cle in ("cadence_spm", "move_rate_cpm"):
+        v = features.get(cle, float("nan"))
+        if isinstance(v, (int, float)) and np.isfinite(v) and v > 0:
+            while v > 132:                    # une cadence rapide se lit à la moitié
+                v /= 2.0
+            while v < 46:
+                v *= 2.0
+            return float(np.clip(v, 46.0, 132.0))
+    return 76.0
+
+
+def _hauteur(midi: float) -> float:
+    return 440.0 * (2.0 ** ((float(midi) - 69.0) / 12.0))
+
+
+def musique(serie: List[Dict[str, float]], features: Dict[str, float],
+            biomarqueurs: Dict[str, object], duree: float) -> Dict[str, object]:
+    """Partition complète, en secondes de vidéo."""
+    if not serie:
+        return {}
+    t = np.array([p["t"] for p in serie], dtype=float)
+    v = np.array([p["v"] for p in serie], dtype=float)
+    n = np.array([p.get("n", 0) for p in serie], dtype=float)
+    if t.size < 4:
+        return {}
+
+    npx = (biomarqueurs.get("neuroplasticity") or {}).get("score", float("nan"))
+    mob = (biomarqueurs.get("bio_mobility") or {}).get("score", float("nan"))
+    mode = _mode_de(npx)
+    gamme = MODES[mode]
+    tempo = _tempo_de(features)
+    temps = 60.0 / tempo
+
+    #  La tonique monte avec la mobilité : un corps allant sonne plus clair.
+    base = 50 if not np.isfinite(mob) else int(np.clip(45 + mob / 9.0, 45, 57))
+
+    #  ── lecture du geste : accents, renversements, repos ──────────────
+    vmax = float(np.nanmax(v)) or 1.0
+    dv = np.gradient(v)
+    accent = (v > 0.68 * vmax) & (np.abs(dv) < 0.18 * vmax)
+    repos = v < 0.22 * vmax
+    renv = np.zeros_like(v, dtype=bool)
+    renv[1:] = (np.sign(dv[:-1]) != np.sign(dv[1:])) & (np.abs(dv[1:]) > 0.06 * vmax)
+
+    #  ── les accords : un pas dans la marche harmonique par événement ──
+    accords, tc, i, suite, depuis = [], 0.0, 0, "I", 0
+    while tc < duree and len(accords) < 400:
+        i = int(min(len(t) - 1, np.searchsorted(t, tc)))
+        if repos[i]:
+            suite = "IV" if suite != "IV" else "I"
+        elif accent[i]:
+            suite = "V"
+        elif renv[i]:
+            suite = "vi"
+        else:
+            suite = suite
+        depuis += 1
+        if depuis >= 8:                       # la phrase revient chez elle
+            suite, depuis = "I", 0
+        deg = DEGRES[suite]
+        fond = [gamme[deg % 7] + 12 * (deg // 7),
+                gamme[(deg + 2) % 7] + 12 * ((deg + 2) // 7),
+                gamme[(deg + 4) % 7] + 12 * ((deg + 4) // 7)]
+        #  la durée suit l'agitation : geste vif, accords brefs
+        mesures = 2 if v[i] > 0.5 * vmax else 3
+        accords.append({"t": round(tc, 3), "d": round(mesures * temps, 3),
+                        "b": base + fond[0] - 12,
+                        "n": [base + x for x in fond]})
+        tc += mesures * temps
+
+    #  ── la mélodie : une note par pas mesuré ──────────────────────────
+    notes = []
+    for k in range(1, n.size):
+        if n[k] <= n[k - 1]:
+            continue
+        ti = float(t[k])
+        acc = None
+        for a in accords:
+            if a["t"] <= ti < a["t"] + a["d"]:
+                acc = a
+                break
+        if acc is None:
+            continue
+        #  la vigueur de l'instant choisit le degré de l'accord et l'octave
+        r = float(np.clip(v[k] / vmax, 0, 1))
+        choix = acc["n"][int(round(r * 2))]
+        octave = 12 if r > 0.72 else 0
+        notes.append({"t": round(ti, 3), "p": choix + 12 + octave,
+                      "d": round(0.9 * temps, 3), "g": round(0.30 + 0.35 * r, 3)})
+
+    #  ── la justesse : un geste irrégulier désaccorde légèrement ───────
+    #  En deçà de 2,5 % de variabilité le pas est régulier : la musique reste
+    #  juste. Au-delà, l'harmonie se ternit, jusqu'à un tiers de demi-ton.
+    cv = float("nan")
+    for cle in ("step_time_cv_pct", "move_cycle_cv_pct", "stride_time_cv_pct"):
+        x = features.get(cle, float("nan"))
+        if isinstance(x, (int, float)) and np.isfinite(x):
+            cv = float(x)
+            break
+    if not np.isfinite(cv):
+        cv = 4.0
+    detune = float(np.clip((cv - 2.5) * 3.4, 0.0, 32.0))     # en cents
+
+    return {"tempo": round(tempo, 1), "mode": mode, "tonique": base,
+            "accords": accords, "notes": notes, "detune": round(detune, 1),
+            "hz_tonique": round(_hauteur(base), 2)}
+
 
 
 def rejeu(chemin: str, biomarqueurs: Dict[str, object], features: Dict[str, float],
@@ -165,8 +315,9 @@ def rejeu(chemin: str, biomarqueurs: Dict[str, object], features: Dict[str, floa
         if isinstance(v, (int, float)) and np.isfinite(v) and _kx.plausible(cle, v):
             metriques.append({"nom": nom, "val": round(float(v), dec), "unite": unite})
     vmax = max([p["v"] for p in serie] or [1.0]) or 1.0
+    partition = musique(serie, features, biomarqueurs, duree)
     donnees = json.dumps({"cartes": cartes, "serie": serie, "metriques": metriques,
-                          "vmax": round(float(vmax), 3),
+                          "vmax": round(float(vmax), 3), "musique": partition,
                           "duree": round(duree, 2),
                           "unite_v": "m/s" if echelle > 0 else "u/s"})
 
@@ -185,24 +336,34 @@ _GABARIT = """
  background:repeating-linear-gradient(180deg,rgba(180,230,255,.16) 0 1px,transparent 1px 4px)}
 .kx-hud{position:absolute;left:0;right:0;bottom:0;padding:14px 16px 16px;
  display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;pointer-events:none}
-.kx-card{flex:1 1 130px;min-width:120px;border-radius:12px;padding:9px 11px 10px;
+.kx-card{flex:1 1 168px;min-width:150px;border-radius:14px;padding:11px 14px 13px;
  background:rgba(8,12,22,.42);backdrop-filter:blur(12px) saturate(140%);
  -webkit-backdrop-filter:blur(12px) saturate(140%);
  border:1px solid rgba(255,255,255,.14);border-top-width:2px}
-.kx-lab{font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:#9BB0D0}
-.kx-val{font-size:30px;font-weight:300;letter-spacing:-.04em;color:#fff;line-height:1;
- font-variant-numeric:tabular-nums;margin-top:2px;text-shadow:0 0 18px rgba(140,200,255,.35)}
-.kx-val small{font-size:11px;color:#9BB0D0;margin-left:4px;letter-spacing:0}
+.kx-lab{font-size:clamp(12px,1.45vw,22px);letter-spacing:.22em;text-transform:uppercase;
+ color:#B6C8E4;font-weight:500;text-shadow:0 0 14px rgba(120,180,255,.28)}
+.kx-val{font-size:clamp(38px,5vw,86px);font-weight:200;letter-spacing:-.045em;color:#fff;
+ line-height:.95;font-variant-numeric:tabular-nums;margin-top:3px;
+ text-shadow:0 0 10px rgba(255,255,255,.30),0 0 34px rgba(140,200,255,.45),
+             0 0 72px rgba(90,170,255,.22)}
+.kx-val small{font-size:clamp(12px,1.35vw,22px);color:#9BB0D0;margin-left:5px;
+ letter-spacing:0;text-shadow:none}
 .kx-live{position:absolute;top:14px;right:16px;text-align:right;pointer-events:none}
-.kx-live div{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#9BB0D0}
-.kx-live b{display:block;font-size:34px;font-weight:300;color:#fff;letter-spacing:-.04em;
- font-variant-numeric:tabular-nums;text-shadow:0 0 22px rgba(120,220,255,.45)}
-.kx-inst{position:absolute;top:14px;left:16px;font-size:9.5px;letter-spacing:.22em;
+.kx-live div{font-size:clamp(11px,1.25vw,19px);letter-spacing:.2em;text-transform:uppercase;
+ color:#9BB0D0}
+.kx-live b{display:block;font-size:clamp(46px,6.2vw,108px);font-weight:200;color:#fff;
+ letter-spacing:-.05em;line-height:.92;font-variant-numeric:tabular-nums;
+ text-shadow:0 0 12px rgba(255,255,255,.32),0 0 40px rgba(120,220,255,.52),
+             0 0 84px rgba(60,190,255,.24)}
+.kx-live b.petit{font-size:clamp(30px,3.9vw,68px)}
+.kx-inst{position:absolute;top:14px;left:16px;font-size:clamp(10px,1.1vw,16px);
+ letter-spacing:.24em;
  text-transform:uppercase;color:#F97316;border:1px solid rgba(249,115,22,.5);
  border-radius:99px;padding:4px 12px;pointer-events:none}
 .kx-line{position:absolute;left:0;right:0;height:1px;pointer-events:none;
  background:linear-gradient(90deg,transparent,rgba(140,220,255,.55),transparent)}
-.kx-time{position:absolute;top:44px;left:16px;font-size:11px;letter-spacing:.18em;
+.kx-time{position:absolute;top:46px;left:16px;font-size:clamp(14px,1.6vw,24px);
+ letter-spacing:.22em;
  color:#9BB0D0;font-variant-numeric:tabular-nums;pointer-events:none}
 .kx-bar{position:absolute;left:16px;right:16px;bottom:0;height:2px;
  background:rgba(255,255,255,.10);pointer-events:none}
@@ -225,8 +386,11 @@ _GABARIT = """
 .kx-etiq{position:absolute;left:calc(100% + 10px);top:8px;white-space:nowrap;
  background:rgba(8,12,22,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
  border:1px solid rgba(255,255,255,.16);border-left:2px solid #14D6C4;border-radius:8px;
- padding:5px 9px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#CFE4FF}
-.kx-etiq b{display:block;font-size:17px;letter-spacing:-.02em;color:#fff;
+ padding:7px 12px;font-size:clamp(11px,1.2vw,18px);letter-spacing:.17em;
+ text-transform:uppercase;color:#CFE4FF}
+.kx-etiq b{display:block;font-size:clamp(24px,3vw,52px);font-weight:200;line-height:1;
+ letter-spacing:-.035em;color:#fff;
+ text-shadow:0 0 10px rgba(255,255,255,.28),0 0 30px rgba(140,220,255,.45);
  font-variant-numeric:tabular-nums;text-transform:none}
 .kx-trace{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;
  background:#14D6C4;pointer-events:none}
@@ -236,6 +400,8 @@ _GABARIT = """
  color:#CFE4FF;border-radius:9px;padding:5px 10px;font-size:11px;letter-spacing:.12em;
  text-transform:uppercase;cursor:pointer;font-family:inherit}
 .kx-btn button:hover{border-color:rgba(20,214,196,.7);color:#fff}
+.kx-btn button.actif{border-color:rgba(20,214,196,.9);color:#14D6C4;
+ box-shadow:0 0 18px rgba(20,214,196,.35)}
 .kx-scene.plein{position:fixed;inset:0;z-index:99999;border-radius:0;
  display:flex;align-items:center;justify-content:center;background:#04060C}
 .kx-scene.plein video{max-height:100vh;max-width:100vw;width:auto;height:100vh}
@@ -259,7 +425,7 @@ _GABARIT = """
 /* ---- oscillogramme de vitesse ---- */
 .kx-osc{position:absolute;left:16px;right:16px;bottom:96px;height:46px;pointer-events:none}
 .kx-osc svg{width:100%;height:100%;overflow:visible}
-.kx-mets{position:absolute;top:52px;right:16px;bottom:96px;width:min(340px,46%);
+.kx-mets{position:absolute;top:56px;right:16px;bottom:110px;width:min(430px,52%);
  overflow:auto;padding:12px 14px;border-radius:14px;z-index:5;
  background:rgba(8,12,22,.62);backdrop-filter:blur(16px) saturate(150%);
  -webkit-backdrop-filter:blur(16px) saturate(150%);
@@ -267,12 +433,15 @@ _GABARIT = """
  transform:translateX(112%);transition:transform .28s cubic-bezier(.22,1,.36,1);
  scrollbar-width:thin}
 .kx-mets.ouvert{transform:translateX(0)}
-.kx-mets h4{margin:0 0 8px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+.kx-mets h4{margin:0 0 10px;font-size:clamp(11px,1.2vw,17px);letter-spacing:.22em;
+ text-transform:uppercase;
  color:#F97316;font-weight:500}
 .kx-met{display:flex;justify-content:space-between;gap:10px;padding:5px 0;
- border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;color:#9BB0D0}
-.kx-met b{color:#fff;font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}
-.kx-met b i{font-style:normal;color:#9BB0D0;font-size:10px;margin-left:3px}
+ border-bottom:1px solid rgba(255,255,255,.06);font-size:clamp(13px,1.4vw,21px);
+ color:#9BB0D0}
+.kx-met b{color:#fff;font-weight:300;font-variant-numeric:tabular-nums;white-space:nowrap;
+ text-shadow:0 0 16px rgba(140,200,255,.35)}
+.kx-met b i{font-style:normal;color:#9BB0D0;font-size:.62em;margin-left:4px}
 </style>
 
 <div class="kx-scene" id="kxs">
@@ -288,6 +457,7 @@ _GABARIT = """
     <polyline id="kxoscf" fill="rgba(20,214,196,.12)" stroke="none" points=""></polyline>
   </svg></div>
   <div class="kx-btn">
+    <button id="kxson" type="button">♪ son</button>
     <button id="kxleg" type="button">?</button>
     <button id="kxmet" type="button">métriques</button>
     <button id="kxplein" type="button">⛶ agrandir</button>
@@ -310,7 +480,7 @@ _GABARIT = """
   <div class="kx-inst">Kinexa · Metrology of Vitality</div>
   <div class="kx-time" id="kxt">00:00</div>
   <div class="kx-live"><div id="kxvu">vitesse</div><b id="kxv1">0.00</b>
-    <div id="kxpu">pas</div><b id="kxp1" style="font-size:22px">0</b></div>
+    <div id="kxpu">pas</div><b id="kxp1" class="petit">0</b></div>
   <div class="kx-hud" id="kxhud"></div>
   <div class="kx-bar"><i id="kxbar"></i></div>
 </div>
@@ -439,6 +609,114 @@ _GABARIT = """
     if(bl && legp) bl.addEventListener('click', function(){
       if(pan){ pan.classList.remove('ouvert'); if(bm) bm.textContent = 'métriques'; }
       legp.classList.toggle('ouvert');
+    });
+  })();
+
+  /* ─────────────────────────────────────────────────────────────────
+     La musique du mouvement.
+
+     La partition est calculée côté serveur à partir des mesures ; ici on
+     ne fait que la jouer, calée sur l'horloge de la vidéo. Le son ne peut
+     démarrer que sur un geste de l'utilisateur — c'est la règle de tous
+     les navigateurs — d'où le bouton, et le silence par défaut.
+     ───────────────────────────────────────────────────────────────── */
+  (function(){
+    var M = D.musique;
+    var bs = document.getElementById('kxson');
+    if(!bs) return;
+    if(!M || !M.accords || !M.accords.length){ bs.style.display = 'none'; return; }
+
+    var ctx = null, maitre = null, echo = null, joue = false, minuteur = null;
+    var faitA = {}, faitN = {};              /* ce qui a déjà sonné, ce tour-ci */
+    var dernier = 0;
+
+    function hz(midi, cents){
+      return 440 * Math.pow(2, (midi - 69) / 12) * Math.pow(2, (cents || 0) / 1200);
+    }
+
+    function ouvre(){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return false;
+      ctx = new AC();
+      maitre = ctx.createGain();
+      maitre.gain.value = 0.0001;
+      var filtre = ctx.createBiquadFilter();
+      filtre.type = 'lowpass';
+      filtre.frequency.value = 4200;
+      /* un écho court donne l'espace, sans réverbération coûteuse */
+      echo = ctx.createDelay(1.0);
+      echo.delayTime.value = 0.28;
+      var retour = ctx.createGain();
+      retour.gain.value = 0.26;
+      var envoi = ctx.createGain();
+      envoi.gain.value = 0.30;
+      maitre.connect(filtre); filtre.connect(ctx.destination);
+      maitre.connect(envoi); envoi.connect(echo);
+      echo.connect(retour); retour.connect(echo); echo.connect(ctx.destination);
+      maitre.gain.linearRampToValueAtTime(0.16, ctx.currentTime + 1.2);
+      return true;
+    }
+
+    /* une voix : deux ondes légèrement écartées, enveloppe douce */
+    function voix(freq, quand, duree, gain, timbre, cents){
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, quand);
+      var attaque = timbre === 'nappe' ? 0.35 : 0.012;
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), quand + attaque);
+      g.gain.exponentialRampToValueAtTime(0.0001, quand + duree);
+      g.connect(maitre);
+      [0, 1].forEach(function(k){
+        var o = ctx.createOscillator();
+        o.type = timbre === 'basse' ? 'sine' : 'triangle';
+        var ec = (k ? (cents || 0) + 4 : -(cents || 0) - 4);
+        o.frequency.setValueAtTime(freq * Math.pow(2, ec / 1200), quand);
+        o.connect(g);
+        o.start(quand);
+        o.stop(quand + duree + 0.06);
+      });
+    }
+
+    function rendu(){
+      if(!ctx || !joue || v.paused) return;
+      var t = v.currentTime;
+      if(t < dernier - 0.4){ faitA = {}; faitN = {}; }    /* la vidéo a rebouclé */
+      dernier = t;
+      var horizon = t + 0.22, maintenant = ctx.currentTime;
+
+      M.accords.forEach(function(a, i){
+        if(faitA[i] || a.t > horizon || a.t < t - 0.25) return;
+        faitA[i] = 1;
+        var quand = maintenant + Math.max(0, a.t - t);
+        a.n.forEach(function(p, k){
+          voix(hz(p, (k - 1) * M.detune * 0.5), quand, a.d * 0.96,
+               0.055 - 0.008 * k, 'nappe', M.detune);
+        });
+        voix(hz(a.b), quand, Math.min(a.d, 1.6), 0.075, 'basse', 0);
+      });
+
+      M.notes.forEach(function(nt, i){
+        if(faitN[i] || nt.t > horizon || nt.t < t - 0.25) return;
+        faitN[i] = 1;
+        voix(hz(nt.p, M.detune), maintenant + Math.max(0, nt.t - t),
+             nt.d, 0.085 * nt.g, 'cloche', M.detune);
+      });
+    }
+
+    bs.addEventListener('click', function(){
+      if(!ctx && !ouvre()){ bs.style.display = 'none'; return; }
+      if(ctx.state === 'suspended') ctx.resume();
+      joue = !joue;
+      bs.classList.toggle('actif', joue);
+      bs.textContent = joue ? '♪ ' + M.mode : '♪ son';
+      if(joue){
+        faitA = {}; faitN = {};
+        maitre.gain.cancelScheduledValues(ctx.currentTime);
+        maitre.gain.linearRampToValueAtTime(0.16, ctx.currentTime + 0.8);
+        if(!minuteur) minuteur = setInterval(rendu, 60);
+      }else{
+        maitre.gain.cancelScheduledValues(ctx.currentTime);
+        maitre.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+      }
     });
   })();
 

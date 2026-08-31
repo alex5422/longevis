@@ -156,6 +156,15 @@ html,body,[class*="css"]{font-family:var(--f);color:var(--text);
 .t-nr{color:var(--warn);background:rgba(255,184,77,.11);border-color:rgba(255,184,77,.24)}
 .t-ko{color:var(--bad);background:rgba(255,107,107,.11);border-color:rgba(255,107,107,.24)}
 .t-te{color:var(--faint);background:rgba(255,255,255,.05);border-color:var(--edge)}
+.t-av{color:var(--a1);background:rgba(91,140,255,.11);border-color:rgba(91,140,255,.24)}
+
+/* ---------- À venir ---------- */
+.iv-soon-list{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.iv-soon-item{display:flex;align-items:center;justify-content:space-between;gap:14px;
+ padding:14px 18px;border:1px dashed var(--edge);border-radius:14px;
+ background:rgba(255,255,255,.02)}
+.iv-soon-item b{color:var(--dim);font-weight:500;font-size:14px;display:block}
+.iv-soon-item .iv-soon-desc{color:var(--faint);font-size:12.5px}
 
 /* ---------- Messages ---------- */
 .iv-msg{background:var(--surface);border:1px solid var(--edge);border-radius:14px;
@@ -215,8 +224,8 @@ GROUPES = [
                                   "move_mean_speed_stature", "move_rate_cpm",
                                   "move_cycle_cv_pct", "move_n_cycles", "move_sparc",
                                   "move_jerk_norm", "move_active_pct"]),
-    ("Acquisition", ["silhouette_height_px", "px_per_m", "body_detection_rate",
-                     "camera_motion_px"]),
+    ("Acquisition (technique, non filmé)", ["silhouette_height_px", "px_per_m",
+                     "body_detection_rate", "camera_motion_px"]),
 ]
 
 
@@ -379,6 +388,21 @@ with st.sidebar:
                                     value="grand",
                                     help="Le rejeu s'agrandit aussi en plein écran, "
                                          "par le bouton ⛶ dans l'image.")
+
+    st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Ressenti du jour</p>',
+                unsafe_allow_html=True)
+    st.caption("Cinq questions, à répondre juste avant de filmer.")
+    q_energie = st.slider("Énergie perçue", 0, 10, 5,
+                          help="0 = épuisé·e, 10 = plein d'énergie")
+    q_fatigue = st.slider("Fatigue", 0, 10, 5,
+                          help="0 = aucune fatigue, 10 = épuisement")
+    q_humeur = st.slider("Humeur", 0, 10, 5,
+                         help="0 = très négative, 10 = très positive")
+    q_forme = st.slider("Forme générale", 0, 10, 5,
+                        help="0 = mauvaise forme perçue, 10 = excellente forme")
+    q_douleur = st.slider("Douleur, là maintenant", 0, 10, 5,
+                          help="0 = aucune douleur, 10 = douleur maximale")
+
     lancer = st.button("Analyser", type="primary", disabled=fichier is None,
                        use_container_width=True)
     st.markdown('<div class="iv-msg" style="font-size:13px;margin-top:26px">'
@@ -547,6 +571,8 @@ else:
                             unsafe_allow_html=True)
 
         st.markdown('<p class="iv-h">Mesures principales</p>', unsafe_allow_html=True)
+        st.markdown('<p class="iv-cap" style="margin:-10px 0 14px">Mesuré '
+                    'directement sur la personne filmée.</p>', unsafe_allow_html=True)
         st.markdown('<div class="iv-grid">'
                     + carte("Vitesse de marche", g("gait_speed_m_s"), "m/s",
                             f.get("gait_speed_band", ""), hero=True)
@@ -556,6 +582,18 @@ else:
                     + carte("Demi-tours", g("n_turns"), "", dec=0)
                     + carte("Durée", meta.get("duration_s"), "s", dec=0)
                     + '</div>', unsafe_allow_html=True)
+
+        st.markdown('<p class="iv-h">Ressenti déclaré</p>', unsafe_allow_html=True)
+        st.markdown('<div class="iv-grid">'
+                    + carte("Énergie perçue", q_energie, "/10", dec=0)
+                    + carte("Fatigue", q_fatigue, "/10", dec=0)
+                    + carte("Humeur", q_humeur, "/10", dec=0)
+                    + carte("Forme générale", q_forme, "/10", dec=0)
+                    + carte("Douleur au test", q_douleur, "/10", dec=0)
+                    + '</div>'
+                    '<p class="iv-cap" style="margin:10px 0 0">Auto-évaluation au '
+                    'moment du test, non mesurée par la vidéo — à lire à côté des '
+                    'indices ci-dessus, pas à la place.</p>', unsafe_allow_html=True)
 
         st.markdown('<p class="iv-h">Indices composites</p>', unsafe_allow_html=True)
         st.markdown('<div class="iv-grid">'
@@ -572,49 +610,58 @@ else:
                     'comparant une personne à elle-même dans le temps.</div>',
                     unsafe_allow_html=True)
 
-        st.markdown('<p class="iv-h">Contrôle de l\'acquisition</p>',
+        st.markdown('<p class="iv-h">Contrôle technique de l\'acquisition</p>',
                     unsafe_allow_html=True)
-        c1, c2 = st.columns([3, 2])
-        with c1:
-            if traces.preview is not None:
-                st.image(traces.preview[:, :, ::-1],
-                         caption="Cadre vert : silhouette détectée. "
-                                 "Trait orange : zone des jambes.",
-                         use_container_width=True)
-            else:
-                st.markdown('<div class="iv-msg iv-msg--stop">Aucune silhouette '
-                            'isolée. La caméra bouge, le fond est chargé, ou le '
-                            'sujet occupe presque tout le champ.</div>',
-                            unsafe_allow_html=True)
-        with c2:
-            st.markdown('<div class="iv-grid" style="grid-template-columns:1fr 1fr">'
-                        + carte("Corps détecté", traces.detection_rate * 100, "%",
-                                dec=0)
-                        + carte("Caméra", traces.camera_motion_px, "px/img")
-                        + carte("Trajets", g("n_passes"), "", dec=0)
-                        + carte("Échelle", g("px_per_m"), "px/m", dec=0)
-                        + '</div>', unsafe_allow_html=True)
-            for a in ([] if True else
-                      ["La caméra bouge. Posez-la sur un support stable."]) + \
-                     ([] if traces.detection_rate >= 0.6 else
-                      ["Corps mal détecté. Reculez, dégagez le fond."]) + \
-                     ([] if meta.get("task") == "marche" else
-                      [f"Activité reconnue : « {meta.get('task')} ». "
-                       "Pour la marche, filmez des allers-retours."]):
-                st.markdown(f'<div class="iv-msg iv-msg--warn">{a}</div>',
-                            unsafe_allow_html=True)
-            conseils = ([] if traces.camera_motion_px <= 0.5 else
-                        ["Caméra en mouvement : posez-la sur un support."]) + \
-                       ([] if traces.detection_rate >= 0.6 else
-                        ["Silhouette peu détectée : reculez, dégagez le fond."])
-            if conseils:
-                st.markdown('<p class="iv-cap">' + ' · '.join(conseils) + '</p>',
-                            unsafe_allow_html=True)
+        st.markdown('<p class="iv-cap" style="margin:-10px 0 12px">Qualité de la '
+                    'prise de vue — pas une mesure de la personne filmée.</p>',
+                    unsafe_allow_html=True)
+        with st.expander("Afficher le détail technique", expanded=False):
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                if traces.preview is not None:
+                    st.image(traces.preview[:, :, ::-1],
+                             caption="Cadre vert : silhouette détectée. "
+                                     "Trait orange : zone des jambes.",
+                             use_container_width=True)
+                else:
+                    st.markdown('<div class="iv-msg iv-msg--stop">Aucune '
+                                'silhouette isolée. La caméra bouge, le fond est '
+                                'chargé, ou le sujet occupe presque tout le '
+                                'champ.</div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown('<div class="iv-grid" style="grid-template-columns:1fr 1fr">'
+                            + carte("Corps détecté", traces.detection_rate * 100, "%",
+                                    dec=0)
+                            + carte("Caméra", traces.camera_motion_px, "px/img")
+                            + carte("Trajets", g("n_passes"), "", dec=0)
+                            + carte("Échelle", g("px_per_m"), "px/m", dec=0)
+                            + '</div>', unsafe_allow_html=True)
+                for a in ([] if True else
+                          ["La caméra bouge. Posez-la sur un support stable."]) + \
+                         ([] if traces.detection_rate >= 0.6 else
+                          ["Corps mal détecté. Reculez, dégagez le fond."]) + \
+                         ([] if meta.get("task") == "marche" else
+                          [f"Activité reconnue : « {meta.get('task')} ». "
+                           "Pour la marche, filmez des allers-retours."]):
+                    st.markdown(f'<div class="iv-msg iv-msg--warn">{a}</div>',
+                                unsafe_allow_html=True)
+                conseils = ([] if traces.camera_motion_px <= 0.5 else
+                            ["Caméra en mouvement : posez-la sur un support."]) + \
+                           ([] if traces.detection_rate >= 0.6 else
+                            ["Silhouette peu détectée : reculez, dégagez le fond."])
+                if conseils:
+                    st.markdown('<p class="iv-cap">' + ' · '.join(conseils) + '</p>',
+                                unsafe_allow_html=True)
 
         import json as _json
         mesurable = {k: (round(float(v), 4) if isinstance(v, (int, float)) else v)
                      for k, v in f.items()
                      if isinstance(v, (int, float, str))}
+        mesurable["quest_energie"] = q_energie
+        mesurable["quest_fatigue"] = q_fatigue
+        mesurable["quest_humeur"] = q_humeur
+        mesurable["quest_forme_generale"] = q_forme
+        mesurable["quest_douleur"] = q_douleur
         mesurable["_meta"] = {k: v for k, v in meta.items()
                               if isinstance(v, (int, float, str))}
         csv = "mesure;valeur\n" + "\n".join(
@@ -678,6 +725,30 @@ else:
     finally:
         if chemin and os.path.exists(chemin):
             os.remove(chemin)
+
+st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
+           unsafe_allow_html=True)
+st.markdown(
+    '<div class="iv-soon-list">'
+    '<div class="iv-soon-item"><div><b>Biologie sanguine</b>'
+    '<span class="iv-soon-desc">Marqueurs inflammatoires, lipides, glycémie, '
+    'hormones</span></div><span class="tag t-av">à venir</span></div>'
+    '<div class="iv-soon-item"><div><b>Cardio-respiratoire</b>'
+    '<span class="iv-soon-desc">Tension artérielle, VO2max, fréquence cardiaque '
+    'au repos</span></div><span class="tag t-av">à venir</span></div>'
+    '<div class="iv-soon-item"><div><b>Composition corporelle</b>'
+    '<span class="iv-soon-desc">Masse grasse, masse musculaire, tour de '
+    'taille</span></div><span class="tag t-av">à venir</span></div>'
+    '<div class="iv-soon-item"><div><b>Sommeil</b>'
+    '<span class="iv-soon-desc">Durée, qualité, régularité</span></div>'
+    '<span class="tag t-av">à venir</span></div>'
+    '<div class="iv-soon-item"><div><b>Cognition</b>'
+    '<span class="iv-soon-desc">Temps de réaction, mémoire de travail</span></div>'
+    '<span class="tag t-av">à venir</span></div>'
+    '</div>'
+    '<p class="iv-cap" style="margin:14px 0 0">Cet espace est réservé aux futures '
+    'mesures biologiques et cognitives, pour compléter à terme les biomarqueurs '
+    'issus de la vidéo.</p>', unsafe_allow_html=True)
 
 st.markdown('<p class="iv-foot"><b>Outil de recherche — pas un dispositif '
             'médical.</b> Aucun diagnostic, aucune prédiction d\'espérance de vie. '

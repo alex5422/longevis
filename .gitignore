@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.m4v
+.venv/
+venv/

@@ -420,7 +420,7 @@ with st.sidebar:
                 unsafe_allow_html=True)
 
 st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality</span>'
-            '<span class="iv-tag"><i></i>Analyse vidéo de la marche</span>'
+            '<span class="iv-tag"><i></i>Analyse vidéo</span>'
             '<h1 class="iv-title">LongeVis</h1>'
             '<p class="iv-lede">Une vidéo de quelqu\'un qui marche suffit à mesurer '
             'sa vitesse, sa cadence, l\'amplitude de ses pas et ce que lui coûtent '

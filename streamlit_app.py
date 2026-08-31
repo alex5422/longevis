@@ -67,8 +67,8 @@ html,body,[class*="css"]{font-family:var(--f);color:var(--text);
    flèche vit dans le même <header> que la barre qu'on masque ci-dessus. Sans
    cette ligne, impossible de rouvrir la barre latérale sur téléphone — donc
    impossible d'atteindre le bouton d'envoi de vidéo. */
-[data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{
- visibility:visible!important;display:flex!important;opacity:1!important}
+[data-testid="stSidebarCollapseButton"]{
+ visibility:visible!important;opacity:1!important}
 .block-container{padding-top:3rem;max-width:1180px}
 
 /* ---------- En-tête ---------- */
@@ -413,11 +413,6 @@ with st.sidebar:
 
     lancer = st.button("Analyser", type="primary", disabled=fichier is None,
                        use_container_width=True)
-    st.markdown('<div class="iv-msg" style="font-size:13px;margin-top:26px">'
-                '<b>Comment filmer</b><br>Caméra posée, jamais tenue à la main. '
-                'Corps entier dans le champ. Le sujet traverse l\'image en '
-                'allers-retours, 30 secondes au moins. Fond dégagé.</div>',
-                unsafe_allow_html=True)
 
 st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality</span>'
             '<span class="iv-tag"><i></i>Analyse vidéo</span>'

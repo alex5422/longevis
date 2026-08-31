@@ -373,13 +373,23 @@ def scene_analyse(cx, spread, fps, passes, turns):
  {ticks}</svg></div>'''
 
 
+st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality</span>'
+            '<span class="iv-tag"><i></i>Analyse vidéo</span>'
+            '<h1 class="iv-title">LongeVis</h1>'
+            '<p class="iv-lede">Une vidéo de quelqu\'un qui marche suffit à mesurer '
+            'sa vitesse, sa cadence, l\'amplitude de ses pas et ce que lui coûtent '
+            'ses demi-tours.</p>', unsafe_allow_html=True)
+
+fichier = st.file_uploader("Vidéo de marche")
+st.caption("MP4, MOV, AVI, MKV, WebM, M4V. Sur Android, imposer un format ici "
+           "fait parfois disparaître toutes les vidéos du sélecteur — le format "
+           "est donc vérifié après le choix du fichier, pas avant.")
+lancer = st.button("Analyser", type="primary", disabled=fichier is None,
+                   use_container_width=True)
+
 with st.sidebar:
-    st.markdown('<p class="iv-lab" style="margin-bottom:10px">Séquence</p>',
+    st.markdown('<p class="iv-lab" style="margin-bottom:10px">Réglages</p>',
                 unsafe_allow_html=True)
-    fichier = st.file_uploader("Vidéo de marche")
-    st.caption("MP4, MOV, AVI, MKV, WebM, M4V. Sur Android, imposer un format ici "
-               "fait parfois disparaître toutes les vidéos du sélecteur — le format "
-               "est donc vérifié après le choix du fichier, pas avant.")
     taille = st.number_input("Taille du sujet (m)", value=1.72, min_value=0.5,
                              max_value=2.5, step=0.01,
                              help="Environ 6 % d'erreur sur la vitesse.")
@@ -410,16 +420,6 @@ with st.sidebar:
                         help="0 = mauvaise forme perçue, 10 = excellente forme")
     q_douleur = st.slider("Douleur, là maintenant", 0, 10, 5,
                           help="0 = aucune douleur, 10 = douleur maximale")
-
-    lancer = st.button("Analyser", type="primary", disabled=fichier is None,
-                       use_container_width=True)
-
-st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality</span>'
-            '<span class="iv-tag"><i></i>Analyse vidéo</span>'
-            '<h1 class="iv-title">LongeVis</h1>'
-            '<p class="iv-lede">Une vidéo de quelqu\'un qui marche suffit à mesurer '
-            'sa vitesse, sa cadence, l\'amplitude de ses pas et ce que lui coûtent '
-            'ses demi-tours.</p>', unsafe_allow_html=True)
 
 EXTENSIONS_VIDEO = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 

@@ -63,6 +63,12 @@ STYLE = """
 html,body,[class*="css"]{font-family:var(--f);color:var(--text);
  -webkit-font-smoothing:antialiased}
 #MainMenu,footer,header{visibility:hidden}
+/* Sur mobile, la barre latérale démarre repliée derrière une flèche ; cette
+   flèche vit dans le même <header> que la barre qu'on masque ci-dessus. Sans
+   cette ligne, impossible de rouvrir la barre latérale sur téléphone — donc
+   impossible d'atteindre le bouton d'envoi de vidéo. */
+[data-testid="collapsedControl"],[data-testid="stSidebarCollapsedControl"]{
+ visibility:visible!important;display:flex!important;opacity:1!important}
 .block-container{padding-top:3rem;max-width:1180px}
 
 /* ---------- En-tête ---------- */

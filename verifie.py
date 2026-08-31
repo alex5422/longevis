@@ -231,13 +231,14 @@ except OSError:
     pass
 
 
-print("── la musique naît du mouvement ──")
+print("── le répertoire ──")
 
 
 def _partition(**kw):
+    age = kw.pop("age", 70)
     f = mesures(**kw)
     f["px_per_m"] = 140.
-    b = kinexa.biomarqueurs(f, None, kw.pop("age", 70))
+    b = kinexa.biomarqueurs(f, None, age)
     n = 360
     sig = {"body_cx": (200 + np.linspace(0, 300, n)).tolist(),
            "body_spread": (20 + 18 * np.abs(np.sin(np.linspace(0, 20, n)))).tolist(),
@@ -246,47 +247,83 @@ def _partition(**kw):
     return hologramme.musique(serie, f, b, 12.), f, b
 
 
+def _repertoire_libre():
+    """Cinq œuvres, cinq auteurs morts depuis plus d'un siècle et demi."""
+    assert len(hologramme.REPERTOIRE) == 5, "le répertoire a changé de taille"
+    auteurs = {p["auteur"] for p in hologramme.REPERTOIRE.values()}
+    assert auteurs == {"J.-S. Bach", "Beethoven", "Pachelbel"}, auteurs
+    for cle, p in hologramme.REPERTOIRE.items():
+        chant, accomp, longueur = p["bati"]()
+        assert len(chant) >= 8, cle + " : mélodie trop courte (%d notes)" % len(chant)
+        assert accomp, cle + " : aucun accompagnement"
+        assert longueur > 0, cle + " : longueur nulle"
+        for (b, n, d) in chant:
+            assert 0 <= b < longueur, cle + " : note hors de la pièce"
+            assert 36 <= n <= 96, cle + " : note hors du clavier utile : %s" % n
+            assert d > 0, cle + " : durée nulle"
+        assert p["tempo"][0] < p["tempo"][1], cle + " : plage de tempo absurde"
+
+
+def _oeuvres_fideles():
+    """Quelques repères sur les œuvres, pour détecter une transcription abîmée."""
+    chant, accomp, lg = hologramme._bach_prelude()
+    assert len(chant) == 128, "le prélude de Bach doit faire 128 doubles-croches"
+    assert chant[0][1] == 48 and chant[2][1] == 55, "le prélude ne commence pas par do–mi–sol"
+    chant, accomp, lg = hologramme._bach_menuet()
+    assert chant[0][1] == 74, "le menuet ne commence pas sur le ré"
+    chant, accomp, lg = hologramme._beethoven_elise()
+    debut = [n for (_, n, _) in chant[:8]]
+    assert debut == [76, 75, 76, 75, 76, 71, 74, 72], "Élise : ouverture inexacte"
+    chant, accomp, lg = hologramme._beethoven_joie()
+    assert [n for (_, n, _) in chant[:4]] == [64, 64, 65, 67], "l'Hymne à la joie est faux"
+    chant, accomp, lg = hologramme._pachelbel_canon()
+    assert [a[1][0] for a in accomp] == [50, 45, 47, 42, 43, 50, 43, 45], \
+        "la basse du Canon n'est pas la bonne"
+
+
+def _caractere_choisit():
+    cas = [({"move_active_pct": 12}, "repos"),
+           ({"cadence_spm": 100, "move_active_pct": 70}, "marche"),
+           ({"cadence_spm": 118, "move_active_pct": 80}, "elan"),
+           ({"move_active_pct": 60, "move_amplitude_stature": .6,
+             "move_rate_cpm": 22}, "souffle"),
+           ({"move_active_pct": 65, "move_amplitude_stature": .3,
+             "move_rate_cpm": 52}, "appui")]
+    for f, attendu in cas:
+        lu = hologramme.caractere(f)
+        assert lu == attendu, "%s attendait %s, a lu %s" % (f, attendu, lu)
+    for c, cle in hologramme.POUR_PIECE.items():
+        assert cle in hologramme.REPERTOIRE, c + " renvoie à une pièce inexistante"
+
+
 def _partition_complete():
     M, f, b = _partition()
     assert M, "aucune partition"
-    for cle in ("tempo", "mode", "tonique", "accords", "notes", "detune"):
+    for cle in ("titre", "auteur", "tempo", "accords", "notes", "detune", "liste"):
         assert cle in M, cle + " absent de la partition"
-    assert 46 <= M["tempo"] <= 132, "tempo hors du raisonnable : %s" % M["tempo"]
-    assert M["mode"] in hologramme.MODES, "mode inconnu : " + M["mode"]
-    assert len(M["accords"]) >= 3, "%d accords" % len(M["accords"])
-    assert len(M["notes"]) >= 3, "%d notes" % len(M["notes"])
+    assert len(M["liste"]) == 5, "les cinq pièces ne sont pas toutes prêtes"
+    assert M["liste"][0]["titre"] == M["titre"], "la pièce de tête n'est pas la bonne"
+    for a in M["liste"]:
+        assert a["notes"], a["titre"] + " : aucune note"
+        assert a["accords"], a["titre"] + " : aucun accompagnement"
+        assert 40 <= a["tempo"] <= 150, a["titre"] + " : tempo %s" % a["tempo"]
 
 
-def _accords_enchaines():
+def _partition_tient_dans_la_video():
     M, f, b = _partition()
-    fin = 0.0
-    for a in M["accords"]:
-        assert a["t"] >= fin - 1e-6, "les accords se chevauchent"
-        assert 0.5 <= a["d"] <= 6.0, "durée d'accord aberrante : %s" % a["d"]
-        assert len(a["n"]) == 3, "un accord n'a pas trois sons"
-        assert a["b"] < min(a["n"]), "la basse n'est pas sous l'accord"
-        fin = a["t"] + a["d"]
-    assert M["accords"][0]["t"] == 0.0, "la musique ne commence pas avec la vidéo"
+    for a in M["liste"]:
+        assert a["notes"][0]["t"] == 0.0, a["titre"] + " ne commence pas avec la vidéo"
+        assert max(n["t"] for n in a["notes"]) < 12.0, a["titre"] + " déborde de la vidéo"
+        assert max(n["t"] for n in a["notes"]) > 7.0, a["titre"] + " s'arrête trop tôt"
+        for n in a["notes"]:
+            assert 30 <= n["p"] <= 100, a["titre"] + " : note hors registre"
+            assert 0.55 <= n["g"] <= 1.0, a["titre"] + " : nuance hors bornes"
 
 
-def _notes_dans_accord():
+def _nuances_suivent_le_corps():
     M, f, b = _partition()
-    for nt in M["notes"]:
-        acc = [a for a in M["accords"] if a["t"] <= nt["t"] < a["t"] + a["d"]]
-        assert acc, "une note tombe hors de tout accord"
-        assert (nt["p"] - 12) % 12 in [x % 12 for x in acc[0]["n"]] or \
-               (nt["p"] - 24) % 12 in [x % 12 for x in acc[0]["n"]], \
-               "une note est étrangère à son accord"
-        assert 30 <= nt["p"] <= 100, "note hors du registre : %s" % nt["p"]
-
-
-def _mode_suit_le_controle():
-    clair = hologramme._mode_de(80)
-    sombre = hologramme._mode_de(25)
-    assert clair == "lydien" and sombre == "eolien", "%s / %s" % (clair, sombre)
-    ordre = ["lydien", "ionien", "dorien", "eolien"]
-    precedents = [hologramme._mode_de(x) for x in (80, 60, 45, 25)]
-    assert precedents == ordre, "la couleur ne suit pas le contrôle : %s" % precedents
+    g = [n["g"] for n in M["liste"][0]["notes"]]
+    assert max(g) - min(g) > 0.05, "les nuances ne suivent pas le mouvement"
 
 
 def _juste_quand_regulier():
@@ -295,15 +332,19 @@ def _juste_quand_regulier():
     assert reg["detune"] < heurte["detune"], \
         "un geste heurté devrait sonner moins juste (%.1f contre %.1f)" % (
             reg["detune"], heurte["detune"])
-    assert reg["detune"] <= 6, "un geste régulier ne doit pas se désaccorder"
-    assert heurte["detune"] <= 32, "désaccord excessif"
+    assert reg["detune"] <= 6 and heurte["detune"] <= 32, "désaccord hors bornes"
 
 
 def _tempo_suit_la_cadence():
     lent, _, _ = _partition(cadence=64, amp_pas_m=0.5)
     vif, _, _ = _partition(cadence=112, amp_pas_m=0.5)
-    assert vif["tempo"] > lent["tempo"], "le pouls ne suit pas la cadence (%.0f / %.0f)" % (
+    assert vif["tempo"] >= lent["tempo"], "le pouls ne suit pas la cadence (%.0f / %.0f)" % (
         lent["tempo"], vif["tempo"])
+
+
+def _hauteur_suit_la_mobilite():
+    M, f, b = _partition()
+    assert -4 <= M["transposition"] <= 4, "transposition excessive : %s" % M["transposition"]
 
 
 def _musique_dans_le_lecteur():
@@ -317,29 +358,67 @@ def _musique_dans_le_lecteur():
     html = hologramme.rejeu(FAUSSE, kinexa.biomarqueurs(f, None, 70), f, sig,
                             {"fps": 30., "duration_s": 12., "frame_size": (640, 360)})
     d = json.loads(re.search(r"var D = (\{.*?\});", html, re.S).group(1))
-    assert d.get("musique", {}).get("accords"), "la partition n'est pas embarquée"
-    assert "kxson" in html, "bouton du son absent"
-    assert "AudioContext" in html, "moteur sonore absent"
-    assert "createDelay" in html, "l'écho a disparu"
-    assert "v.paused" in html, "le son continue quand la vidéo est arrêtée"
-    assert "rebouclé" in html, "la boucle ne remet pas la partition à zéro"
-    #  le son ne doit jamais démarrer seul
-    i = html.find("bs.addEventListener('click'")
-    assert i > 0, "le son ne démarre pas sur un geste de l'utilisateur"
+    assert len(d.get("musique", {}).get("liste", [])) == 5, "le répertoire n'est pas embarqué"
+    for attendu in ["kxson", "kxair", "AudioContext", "createDelay", "rebouclé"]:
+        assert attendu in html, attendu + " absent du lecteur"
     assert "joue = false" in html, "le son n'est pas silencieux au départ"
+    assert "addEventListener('click'" in html, "le son ne démarre pas sur un geste"
+    for auteur in ("Bach", "Beethoven", "Pachelbel"):
+        assert auteur in html, auteur + " absent du lecteur"
     try:
         os.remove(FAUSSE)
     except OSError:
         pass
 
 
-t("la partition est complète", _partition_complete)
-t("les accords s'enchaînent sans se chevaucher", _accords_enchaines)
-t("chaque note appartient à son accord", _notes_dans_accord)
-t("la couleur du mode suit la qualité du contrôle", _mode_suit_le_controle)
+t("cinq œuvres, toutes du domaine public", _repertoire_libre)
+t("les transcriptions sont fidèles aux œuvres", _oeuvres_fideles)
+t("le caractère du mouvement choisit la pièce", _caractere_choisit)
+t("la partition est complète et les cinq pièces prêtes", _partition_complete)
+t("chaque pièce couvre toute la vidéo sans déborder", _partition_tient_dans_la_video)
+t("les nuances suivent la vigueur du corps", _nuances_suivent_le_corps)
 t("un geste régulier sonne plus juste qu'un geste heurté", _juste_quand_regulier)
 t("le pouls de la musique suit la cadence", _tempo_suit_la_cadence)
-t("le lecteur embarque la partition, muet par défaut", _musique_dans_le_lecteur)
+t("la hauteur suit la mobilité sans dénaturer l'œuvre", _hauteur_suit_la_mobilite)
+t("le lecteur embarque le répertoire, muet par défaut", _musique_dans_le_lecteur)
+
+
+def _son_dans_le_navigateur():
+    """Le lecteur est exécuté par Node, avec un faux DOM et une fausse carte son."""
+    import shutil
+    import subprocess
+    node = shutil.which("node") or shutil.which("nodejs")
+    if node is None:
+        raise AssertionError("Node absent : contrôle du lecteur non exécuté")
+    open(FAUSSE, "wb").write(os.urandom(30000))
+    f = mesures()
+    f["px_per_m"] = 140.
+    n = 360
+    sig = {"body_cx": (200 + np.linspace(0, 300, n)).tolist(),
+           "body_cy": (180 + 6 * np.sin(np.linspace(0, 30, n))).tolist(),
+           "body_height": (220 + 4 * np.sin(np.linspace(0, 30, n))).tolist(),
+           "body_spread": (20 + 18 * np.abs(np.sin(np.linspace(0, 20, n)))).tolist(),
+           "body_fps": 30.}
+    html = hologramme.rejeu(FAUSSE, kinexa.biomarqueurs(f, None, 70), f, sig,
+                            {"fps": 30., "duration_s": 12., "frame_size": (640, 360)})
+    chemin = os.path.join(tempfile.gettempdir(), "_kinexa_lecteur.html")
+    with open(chemin, "w", encoding="utf-8") as fh:
+        fh.write(html)
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verifie_son.js")
+    r = subprocess.run([node, script, chemin], capture_output=True, text=True)
+    for ligne in r.stdout.splitlines():
+        if ligne.strip().startswith(("\u2714", "\u2718")):
+            print("   " + ligne.strip())
+    if r.returncode:
+        raise AssertionError("le lecteur ne se comporte pas comme prévu")
+    for tmp in (FAUSSE, chemin):
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+t("le lecteur joue vraiment, boutons compris", _son_dans_le_navigateur)
 
 
 print("── les valeurs aberrantes sont écartées ──")

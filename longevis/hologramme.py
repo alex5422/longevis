@@ -101,151 +101,245 @@ def hauteur_composant(meta: Dict[str, object], largeur: int = 900) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-#  La musique du mouvement
+#  Le répertoire du rejeu
 #
-#  Le corps écrit la partition. Rien n'est plaqué par-dessus : le tempo naît
-#  de la cadence mesurée, le mode de la qualité du contrôle, les accords des
-#  accents et des repos du geste, et chaque note tombe sur un pas.
+#  Cinq pièces du domaine public, transcrites en notes réelles — hauteur
+#  MIDI, position et durée en temps. Aucune n'est générée : ce sont les
+#  œuvres, jouées telles quelles.
 #
-#  Le résultat doit sonner harmonieux quand le mouvement est ample et
-#  régulier, et se ternir quand il est heurté — c'est là le retour.
+#      Bach       Prélude en ut majeur, BWV 846        (1722)
+#      Bach       Menuet en sol majeur, BWV Anh. 114   (1725)
+#      Beethoven  Lettre à Élise, WoO 59               (1810)
+#      Beethoven  Hymne à la joie, symphonie n° 9      (1824)
+#      Pachelbel  Canon en ré                          (vers 1690)
+#
+#  Leurs auteurs sont morts depuis plus de deux siècles : les partitions
+#  sont libres de droits partout.
+#
+#  Ce qui vient du sujet, c'est le choix de la pièce, son tempo — pris sur
+#  la cadence mesurée —, sa hauteur — prise sur la mobilité —, sa justesse
+#  — prise sur la régularité — et ses nuances, qui suivent temps après
+#  temps la vitesse réellement mesurée du corps.
 # ─────────────────────────────────────────────────────────────────────────
 
-#  Trois couleurs, de la plus lumineuse à la plus grave.
-MODES = {
-    "lydien":  [0, 2, 4, 6, 7, 9, 11],
-    "ionien":  [0, 2, 4, 5, 7, 9, 11],
-    "dorien":  [0, 2, 3, 5, 7, 9, 10],
-    "eolien":  [0, 2, 3, 5, 7, 8, 10],
+
+def _bach_prelude():
+    """BWV 846 : huit mesures, la figure de seize doubles-croches."""
+    barres = [(48, 52, 55, 60, 64), (48, 50, 57, 62, 65), (47, 50, 55, 62, 65),
+              (48, 52, 55, 60, 64), (48, 52, 57, 64, 69), (48, 50, 54, 57, 62),
+              (47, 50, 55, 62, 67), (47, 48, 52, 55, 60)]
+    chant, accomp = [], []
+    for m, (a, b, c, d, e) in enumerate(barres):
+        figure = [a, b, c, d, e, c, d, e]
+        for tour in (0, 1):
+            for k, note in enumerate(figure):
+                chant.append((4 * m + (tour * 8 + k) * 0.25, note, 0.25))
+        accomp.append((4 * m, [a - 12], 4.0))
+    return chant, accomp, 32.0
+
+
+def _bach_menuet():
+    """BWV Anh. 114 : les huit premières mesures, à trois temps."""
+    lignes = [[(0, 74, 1), (1, 67, .5), (1.5, 69, .5), (2, 71, .5), (2.5, 72, .5)],
+              [(0, 74, 1), (1, 67, 1), (2, 67, 1)],
+              [(0, 76, 1), (1, 72, .5), (1.5, 74, .5), (2, 76, .5), (2.5, 78, .5)],
+              [(0, 79, 1), (1, 67, 1), (2, 67, 1)],
+              [(0, 72, 1), (1, 74, .5), (1.5, 72, .5), (2, 71, .5), (2.5, 69, .5)],
+              [(0, 71, 1), (1, 72, .5), (1.5, 71, .5), (2, 69, .5), (2.5, 67, .5)],
+              [(0, 66, 1), (1, 67, .5), (1.5, 69, .5), (2, 71, .5), (2.5, 67, .5)],
+              [(0, 69, 3)]]
+    basses = [[43, 50, 55], [43, 50, 55], [48, 55, 60], [43, 50, 55],
+              [48, 55, 60], [43, 50, 55], [38, 45, 50], [38, 45, 50]]
+    chant, accomp = [], []
+    for m, ligne in enumerate(lignes):
+        for (t, n, d) in ligne:
+            chant.append((3 * m + t, n, d))
+        accomp.append((3 * m, basses[m], 3.0))
+    return chant, accomp, 24.0
+
+
+def _beethoven_elise():
+    """WoO 59 : la phrase d'ouverture, telle qu'on la reconnaît."""
+    suite = [(0, 76, .5), (.5, 75, .5), (1, 76, .5), (1.5, 75, .5), (2, 76, .5),
+             (2.5, 71, .5), (3, 74, .5), (3.5, 72, .5), (4, 69, 1.5),
+             (6, 60, .5), (6.5, 64, .5), (7, 69, .5), (7.5, 71, 1.5),
+             (9, 64, .5), (9.5, 68, .5), (10, 71, .5), (10.5, 72, 1.5),
+             (12, 64, .5), (12.5, 76, .5), (13, 75, .5), (13.5, 76, .5),
+             (14, 75, .5), (14.5, 76, .5), (15, 71, .5), (15.5, 74, .5),
+             (16, 72, .5), (16.5, 69, 1.5),
+             (18, 60, .5), (18.5, 64, .5), (19, 69, .5), (19.5, 71, 1.5),
+             (21, 64, .5), (21.5, 72, .5), (22, 71, .5), (22.5, 69, 2.5)]
+    accomp = [(6, [45, 52, 57], 3.0), (9, [40, 47, 56], 3.0), (12, [45, 52, 57], 6.0),
+              (18, [45, 52, 57], 3.0), (21, [40, 47, 56], 4.0)]
+    return suite, accomp, 25.0
+
+
+def _beethoven_joie():
+    """Symphonie n° 9 : le thème, seize mesures à quatre temps."""
+    theme = [64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64]
+    duree = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    queue = [(12, 64, 1.5), (13.5, 62, .5), (14, 62, 2)]
+    chant, t = [], 0.0
+    for n, d in zip(theme, duree):
+        chant.append((t, n, d))
+        t += d
+    chant += queue
+    #  reprise, avec la cadence sur la tonique
+    for (tt, n, d) in list(chant):
+        chant.append((tt + 16, n, d))
+    chant[-3:] = [(28, 62, 1.5), (29.5, 60, .5), (30, 60, 2)]
+    accords = [[48, 55, 64], [48, 55, 64], [48, 55, 64], [43, 50, 59],
+               [48, 55, 64], [48, 55, 64], [43, 50, 59], [48, 55, 64]]
+    accomp = [(4 * m, accords[m % 8], 4.0) for m in range(8)]
+    return chant, accomp, 32.0
+
+
+def _pachelbel_canon():
+    """Canon en ré : la basse obstinée et la première voix."""
+    basses = [[50, 57, 62], [45, 52, 61], [47, 54, 59], [42, 49, 57],
+              [43, 50, 59], [50, 57, 62], [43, 50, 59], [45, 52, 61]]
+    dessus = [(78, 76), (74, 73), (71, 69), (71, 73),
+              (74, 73), (71, 69), (67, 66), (67, 64)]
+    chant, accomp = [], []
+    for m in range(8):
+        accomp.append((4 * m, basses[m], 4.0))
+        chant.append((4 * m, dessus[m][0], 2.0))
+        chant.append((4 * m + 2, dessus[m][1], 2.0))
+    return chant, accomp, 32.0
+
+
+REPERTOIRE = {
+    "prelude": {"titre": "Prélude en ut", "auteur": "J.-S. Bach",
+                "tempo": (58, 84), "bati": _bach_prelude, "pour": "souffle"},
+    "menuet": {"titre": "Menuet en sol", "auteur": "J.-S. Bach",
+               "tempo": (96, 132), "bati": _bach_menuet, "pour": "marche"},
+    "elise": {"titre": "Lettre à Élise", "auteur": "Beethoven",
+              "tempo": (100, 144), "bati": _beethoven_elise, "pour": "elan"},
+    "joie": {"titre": "Hymne à la joie", "auteur": "Beethoven",
+             "tempo": (76, 116), "bati": _beethoven_joie, "pour": "appui"},
+    "canon": {"titre": "Canon en ré", "auteur": "Pachelbel",
+              "tempo": (48, 72), "bati": _pachelbel_canon, "pour": "repos"},
 }
 
-#  Degrés de la marche harmonique : I, V, vi, IV — l'enchaînement le plus
-#  simple qui sonne juste dans tous les modes ci-dessus.
-DEGRES = {"I": 0, "V": 4, "vi": 5, "IV": 3}
+#  Ce que montre la vidéo → la pièce qui lui va.
+POUR_PIECE = {"souffle": "prelude", "marche": "menuet", "elan": "elise",
+              "appui": "joie", "repos": "canon"}
 
 
-def _mode_de(score: float) -> str:
-    """Le contrôle du geste choisit la couleur de l'harmonie."""
-    if not isinstance(score, (int, float)) or not np.isfinite(score):
-        return "ionien"
-    if score >= 72:
-        return "lydien"
-    if score >= 56:
-        return "ionien"
-    if score >= 40:
-        return "dorien"
-    return "eolien"
+def caractere(features: Dict[str, float]) -> str:
+    """Le caractère du mouvement filmé, en un mot."""
+    def lit(cle):
+        v = features.get(cle, float("nan"))
+        return float(v) if isinstance(v, (int, float)) and np.isfinite(v) else float("nan")
+
+    actif, cadence = lit("move_active_pct"), lit("cadence_spm")
+    pointe, amplitude, rythme = (lit("move_peak_speed_stature"),
+                                 lit("move_amplitude_stature"), lit("move_rate_cpm"))
+    if np.isfinite(actif) and actif < 22:
+        return "repos"
+    if np.isfinite(cadence):
+        return "elan" if ((np.isfinite(pointe) and pointe > 1.7) or cadence > 112) else "marche"
+    if np.isfinite(lit("sts_mean_dur_s")):
+        return "appui"
+    if np.isfinite(amplitude) and amplitude >= 0.45 and (
+            not np.isfinite(rythme) or rythme <= 42):
+        return "souffle"
+    if np.isfinite(rythme) and rythme >= 44:
+        return "appui"
+    return "souffle"
 
 
-def _tempo_de(features: Dict[str, float]) -> float:
-    """Le pouls de la musique est celui du corps."""
+def _tempo_de(features: Dict[str, float], plage) -> float:
+    """Le pouls de la pièce, pris sur celui du corps, dans sa plage propre."""
     for cle in ("cadence_spm", "move_rate_cpm"):
         v = features.get(cle, float("nan"))
         if isinstance(v, (int, float)) and np.isfinite(v) and v > 0:
-            while v > 132:                    # une cadence rapide se lit à la moitié
+            v = float(v)
+            while v > plage[1] * 1.4:
                 v /= 2.0
-            while v < 46:
+            while v < plage[0] * 0.6:
                 v *= 2.0
-            return float(np.clip(v, 46.0, 132.0))
-    return 76.0
+            return float(np.clip(v, plage[0], plage[1]))
+    return float(np.mean(plage))
 
 
 def _hauteur(midi: float) -> float:
     return 440.0 * (2.0 ** ((float(midi) - 69.0) / 12.0))
 
 
+def _nuance(t_s, temps_v, vit, vmax):
+    """La nuance d'une note : la vigueur du corps à cet instant, de 0,58 à 1."""
+    if temps_v.size == 0 or vmax <= 0:
+        return 1.0
+    i = int(np.clip(np.searchsorted(temps_v, t_s), 0, temps_v.size - 1))
+    return float(np.clip(0.58 + 0.42 * (vit[i] / vmax), 0.58, 1.0))
+
+
+def _rendre(cle, features, duree, transpose, temps_v, vit, vmax):
+    """Une pièce déroulée sur toute la durée de la vidéo."""
+    piece = REPERTOIRE[cle]
+    chant, accomp, longueur = piece["bati"]()
+    tempo = _tempo_de(features, piece["tempo"])
+    temps = 60.0 / tempo
+    tour = longueur * temps
+
+    notes, accords, depart, garde = [], [], 0.0, 0
+    while depart < duree and garde < 60:
+        garde += 1
+        for (b, n, d) in chant:
+            t0 = depart + b * temps
+            if t0 >= duree:
+                continue
+            notes.append({"t": round(t0, 3), "p": int(n) + transpose,
+                          "d": round(d * temps * 0.94, 3),
+                          "g": round(_nuance(t0, temps_v, vit, vmax), 3)})
+        for (b, accord, d) in accomp:
+            t0 = depart + b * temps
+            if t0 >= duree:
+                continue
+            hauteurs = [int(x) + transpose for x in accord]
+            accords.append({"t": round(t0, 3), "d": round(d * temps, 3),
+                            "b": min(hauteurs) - 12, "n": hauteurs})
+        depart += tour
+    return {"cle": cle, "titre": piece["titre"], "auteur": piece["auteur"],
+            "tempo": round(tempo, 1), "accords": accords, "notes": notes}
+
+
 def musique(serie: List[Dict[str, float]], features: Dict[str, float],
             biomarqueurs: Dict[str, object], duree: float) -> Dict[str, object]:
-    """Partition complète, en secondes de vidéo."""
-    if not serie:
+    """Tout le répertoire, déroulé pour cette vidéo, la bonne pièce en tête."""
+    if not serie or duree <= 0:
         return {}
-    t = np.array([p["t"] for p in serie], dtype=float)
-    v = np.array([p["v"] for p in serie], dtype=float)
-    n = np.array([p.get("n", 0) for p in serie], dtype=float)
-    if t.size < 4:
-        return {}
+    temps_v = np.array([p["t"] for p in serie], dtype=float)
+    vit = np.array([p["v"] for p in serie], dtype=float)
+    vmax = float(np.nanmax(vit)) if vit.size else 1.0
 
-    npx = (biomarqueurs.get("neuroplasticity") or {}).get("score", float("nan"))
+    #  La hauteur suit la mobilité, sans dénaturer l'œuvre : ± 4 demi-tons.
     mob = (biomarqueurs.get("bio_mobility") or {}).get("score", float("nan"))
-    mode = _mode_de(npx)
-    gamme = MODES[mode]
-    tempo = _tempo_de(features)
-    temps = 60.0 / tempo
+    transpose = 0 if not (isinstance(mob, (int, float)) and np.isfinite(mob)) \
+        else int(np.clip(round((mob - 50) / 12.0), -4, 4))
 
-    #  La tonique monte avec la mobilité : un corps allant sonne plus clair.
-    base = 50 if not np.isfinite(mob) else int(np.clip(45 + mob / 9.0, 45, 57))
-
-    #  ── lecture du geste : accents, renversements, repos ──────────────
-    vmax = float(np.nanmax(v)) or 1.0
-    dv = np.gradient(v)
-    accent = (v > 0.68 * vmax) & (np.abs(dv) < 0.18 * vmax)
-    repos = v < 0.22 * vmax
-    renv = np.zeros_like(v, dtype=bool)
-    renv[1:] = (np.sign(dv[:-1]) != np.sign(dv[1:])) & (np.abs(dv[1:]) > 0.06 * vmax)
-
-    #  ── les accords : un pas dans la marche harmonique par événement ──
-    accords, tc, i, suite, depuis = [], 0.0, 0, "I", 0
-    while tc < duree and len(accords) < 400:
-        i = int(min(len(t) - 1, np.searchsorted(t, tc)))
-        if repos[i]:
-            suite = "IV" if suite != "IV" else "I"
-        elif accent[i]:
-            suite = "V"
-        elif renv[i]:
-            suite = "vi"
-        else:
-            suite = suite
-        depuis += 1
-        if depuis >= 8:                       # la phrase revient chez elle
-            suite, depuis = "I", 0
-        deg = DEGRES[suite]
-        fond = [gamme[deg % 7] + 12 * (deg // 7),
-                gamme[(deg + 2) % 7] + 12 * ((deg + 2) // 7),
-                gamme[(deg + 4) % 7] + 12 * ((deg + 4) // 7)]
-        #  la durée suit l'agitation : geste vif, accords brefs
-        mesures = 2 if v[i] > 0.5 * vmax else 3
-        accords.append({"t": round(tc, 3), "d": round(mesures * temps, 3),
-                        "b": base + fond[0] - 12,
-                        "n": [base + x for x in fond]})
-        tc += mesures * temps
-
-    #  ── la mélodie : une note par pas mesuré ──────────────────────────
-    notes = []
-    for k in range(1, n.size):
-        if n[k] <= n[k - 1]:
-            continue
-        ti = float(t[k])
-        acc = None
-        for a in accords:
-            if a["t"] <= ti < a["t"] + a["d"]:
-                acc = a
-                break
-        if acc is None:
-            continue
-        #  la vigueur de l'instant choisit le degré de l'accord et l'octave
-        r = float(np.clip(v[k] / vmax, 0, 1))
-        choix = acc["n"][int(round(r * 2))]
-        octave = 12 if r > 0.72 else 0
-        notes.append({"t": round(ti, 3), "p": choix + 12 + octave,
-                      "d": round(0.9 * temps, 3), "g": round(0.30 + 0.35 * r, 3)})
-
-    #  ── la justesse : un geste irrégulier désaccorde légèrement ───────
-    #  En deçà de 2,5 % de variabilité le pas est régulier : la musique reste
-    #  juste. Au-delà, l'harmonie se ternit, jusqu'à un tiers de demi-ton.
+    #  La justesse : un geste irrégulier ternit l'harmonie.
     cv = float("nan")
-    for cle in ("step_time_cv_pct", "move_cycle_cv_pct", "stride_time_cv_pct"):
-        x = features.get(cle, float("nan"))
+    for c in ("step_time_cv_pct", "move_cycle_cv_pct", "stride_time_cv_pct"):
+        x = features.get(c, float("nan"))
         if isinstance(x, (int, float)) and np.isfinite(x):
             cv = float(x)
             break
     if not np.isfinite(cv):
         cv = 4.0
-    detune = float(np.clip((cv - 2.5) * 3.4, 0.0, 32.0))     # en cents
+    detune = float(np.clip((cv - 2.5) * 3.4, 0.0, 32.0))
 
-    return {"tempo": round(tempo, 1), "mode": mode, "tonique": base,
-            "accords": accords, "notes": notes, "detune": round(detune, 1),
-            "hz_tonique": round(_hauteur(base), 2)}
+    carac = caractere(features)
+    choisie = POUR_PIECE.get(carac, "menuet")
+    ordre = [choisie] + [k for k in REPERTOIRE if k != choisie]
+    liste = [_rendre(k, features, duree, transpose, temps_v, vit, vmax) for k in ordre]
 
+    tete = liste[0]
+    return {"caractere": carac, "transposition": transpose, "detune": round(detune, 1),
+            "liste": liste, "piece": tete["cle"], "titre": tete["titre"],
+            "auteur": tete["auteur"], "tempo": tete["tempo"],
+            "accords": tete["accords"], "notes": tete["notes"]}
 
 
 def rejeu(chemin: str, biomarqueurs: Dict[str, object], features: Dict[str, float],
@@ -458,6 +552,7 @@ _GABARIT = """
   </svg></div>
   <div class="kx-btn">
     <button id="kxson" type="button">♪ son</button>
+    <button id="kxair" type="button" title="changer de morceau">⟳</button>
     <button id="kxleg" type="button">?</button>
     <button id="kxmet" type="button">métriques</button>
     <button id="kxplein" type="button">⛶ agrandir</button>
@@ -622,10 +717,21 @@ _GABARIT = """
      ───────────────────────────────────────────────────────────────── */
   (function(){
     var M = D.musique;
-    var bs = document.getElementById('kxson');
+    var bs = document.getElementById('kxson'), ba = document.getElementById('kxair');
     if(!bs) return;
-    if(!M || !M.accords || !M.accords.length){ bs.style.display = 'none'; return; }
+    if(!M || !M.liste || !M.liste.length){
+      bs.style.display = 'none';
+      if(ba) ba.style.display = 'none';
+      return;
+    }
+    var rang = 0;                       /* la pièce choisie pour ce mouvement */
+    function air(){ return M.liste[rang]; }
 
+    function etiquette(){
+      var a = air();
+      bs.title = a.titre + ' — ' + a.auteur + ' · ' + Math.round(a.tempo) + ' au métronome';
+      bs.textContent = joue ? '♪ ' + a.titre : '♪ son';
+    }
     var ctx = null, maitre = null, echo = null, joue = false, minuteur = null;
     var faitA = {}, faitN = {};              /* ce qui a déjà sonné, ce tour-ci */
     var dernier = 0;
@@ -661,7 +767,7 @@ _GABARIT = """
     function voix(freq, quand, duree, gain, timbre, cents){
       var g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, quand);
-      var attaque = timbre === 'nappe' ? 0.35 : 0.012;
+      var attaque = timbre === 'nappe' ? 0.4 : (timbre === 'chant' ? 0.035 : 0.012);
       g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), quand + attaque);
       g.gain.exponentialRampToValueAtTime(0.0001, quand + duree);
       g.connect(maitre);
@@ -676,48 +782,95 @@ _GABARIT = """
       });
     }
 
+    /* La musique suit la vidéo quand elle tourne, et son propre pas quand la
+       vidéo est arrêtée — sans quoi un navigateur qui refuse la lecture
+       automatique laisserait le rejeu entièrement muet. */
+    var horloge = 0;
+
     function rendu(){
-      if(!ctx || !joue || v.paused) return;
-      var t = v.currentTime;
-      if(t < dernier - 0.4){ faitA = {}; faitN = {}; }    /* la vidéo a rebouclé */
+      if(!ctx || !joue) return;
+      var t;
+      if(v.paused || !isFinite(v.currentTime)){
+        horloge += 0.06;
+        if(horloge > (D.duree || 12)) horloge = 0;
+        t = horloge;
+      }else{
+        t = v.currentTime;
+        horloge = t;
+      }
+      if(t < dernier - 0.4){ faitA = {}; faitN = {}; }    /* on a rebouclé */
       dernier = t;
       var horizon = t + 0.22, maintenant = ctx.currentTime;
 
-      M.accords.forEach(function(a, i){
+      air().accords.forEach(function(a, i){
         if(faitA[i] || a.t > horizon || a.t < t - 0.25) return;
         faitA[i] = 1;
         var quand = maintenant + Math.max(0, a.t - t);
+        /* la nappe tient toute la mesure, sous la mélodie */
         a.n.forEach(function(p, k){
-          voix(hz(p, (k - 1) * M.detune * 0.5), quand, a.d * 0.96,
-               0.055 - 0.008 * k, 'nappe', M.detune);
+          voix(hz(p, (k - 1) * M.detune * 0.5), quand, a.d * 0.98,
+               0.042 - 0.006 * k, 'nappe', M.detune);
         });
-        voix(hz(a.b), quand, Math.min(a.d, 1.6), 0.075, 'basse', 0);
+        /* la basse marque la mesure : tenue, deux appuis ou quatre */
+        (a.appuis || [a.t]).forEach(function(ta, k){
+          voix(hz(a.b), maintenant + Math.max(0, ta - t),
+               Math.min(a.d, k ? 0.9 : 1.5), k ? 0.055 : 0.08, 'basse', 0);
+        });
       });
 
-      M.notes.forEach(function(nt, i){
+      /* la mélodie : c'est elle qu'on suit ; sa nuance suit le corps */
+      air().notes.forEach(function(nt, i){
         if(faitN[i] || nt.t > horizon || nt.t < t - 0.25) return;
         faitN[i] = 1;
         voix(hz(nt.p, M.detune), maintenant + Math.max(0, nt.t - t),
-             nt.d, 0.085 * nt.g, 'cloche', M.detune);
+             nt.d, 0.105 * nt.g, 'chant', M.detune);
       });
     }
 
+    /* Un accord tenu, joué à l'instant même du clic : l'oreille est fixée
+       tout de suite, sans attendre le prochain événement de la partition. */
+    function amorce(){
+      var a = air().accords[0];
+      if(!a) return;
+      var q = ctx.currentTime + 0.02;
+      a.n.forEach(function(p, k){ voix(hz(p), q, 1.7, 0.05 - 0.007 * k, 'nappe', M.detune); });
+      voix(hz(a.b), q, 1.7, 0.07, 'basse', 0);
+    }
+
     bs.addEventListener('click', function(){
-      if(!ctx && !ouvre()){ bs.style.display = 'none'; return; }
-      if(ctx.state === 'suspended') ctx.resume();
-      joue = !joue;
-      bs.classList.toggle('actif', joue);
-      bs.textContent = joue ? '♪ ' + M.mode : '♪ son';
-      if(joue){
-        faitA = {}; faitN = {};
-        maitre.gain.cancelScheduledValues(ctx.currentTime);
-        maitre.gain.linearRampToValueAtTime(0.16, ctx.currentTime + 0.8);
-        if(!minuteur) minuteur = setInterval(rendu, 60);
-      }else{
-        maitre.gain.cancelScheduledValues(ctx.currentTime);
-        maitre.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+      try{
+        if(!ctx && !ouvre()){ bs.textContent = '♪ indisponible'; return; }
+        if(ctx.state === 'suspended') ctx.resume();
+        joue = !joue;
+        bs.classList.toggle('actif', joue);
+        etiquette();
+        if(joue){
+          faitA = {}; faitN = {}; horloge = v.paused ? 0 : v.currentTime;
+          maitre.gain.cancelScheduledValues(ctx.currentTime);
+          maitre.gain.setValueAtTime(0.0001, ctx.currentTime);
+          maitre.gain.linearRampToValueAtTime(0.16, ctx.currentTime + 0.6);
+          amorce();
+          rendu();
+          if(!minuteur) minuteur = setInterval(rendu, 60);
+        }else{
+          maitre.gain.cancelScheduledValues(ctx.currentTime);
+          maitre.gain.setValueAtTime(maitre.gain.value, ctx.currentTime);
+          maitre.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+        }
+      }catch(e){
+        bs.textContent = '♪ bloqué';
+        bs.title = String(e && e.message || e);
       }
     });
+
+    /* ⟳ : passer au morceau suivant, sans couper l'écoute */
+    if(ba) ba.addEventListener('click', function(){
+      rang = (rang + 1) % M.liste.length;
+      faitA = {}; faitN = {};
+      etiquette();
+      if(joue && ctx){ amorce(); rendu(); }
+    });
+    etiquette();
   })();
 
   /* agrandissement : vrai plein écran si le navigateur l'autorise, sinon

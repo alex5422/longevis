@@ -370,8 +370,10 @@ def scene_analyse(cx, spread, fps, passes, turns):
 with st.sidebar:
     st.markdown('<p class="iv-lab" style="margin-bottom:10px">Séquence</p>',
                 unsafe_allow_html=True)
-    fichier = st.file_uploader("Vidéo de marche",
-                               type=["mp4", "mov", "avi", "mkv", "webm", "m4v"])
+    fichier = st.file_uploader("Vidéo de marche")
+    st.caption("MP4, MOV, AVI, MKV, WebM, M4V. Sur Android, imposer un format ici "
+               "fait parfois disparaître toutes les vidéos du sélecteur — le format "
+               "est donc vérifié après le choix du fichier, pas avant.")
     taille = st.number_input("Taille du sujet (m)", value=1.72, min_value=0.5,
                              max_value=2.5, step=0.01,
                              help="Environ 6 % d'erreur sur la vitesse.")
@@ -418,9 +420,15 @@ st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality<
             'sa vitesse, sa cadence, l\'amplitude de ses pas et ce que lui coûtent '
             'ses demi-tours.</p>', unsafe_allow_html=True)
 
+EXTENSIONS_VIDEO = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+
 if not (lancer and fichier is not None):
     st.markdown(scene_repos(), unsafe_allow_html=True)
     st.markdown(LEGENDE, unsafe_allow_html=True)
+elif os.path.splitext(fichier.name)[1].lower() not in EXTENSIONS_VIDEO:
+    st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
+                f'« {fichier.name} » ne ressemble pas à une vidéo. Formats acceptés '
+                ': MP4, MOV, AVI, MKV, WebM, M4V.</div>', unsafe_allow_html=True)
 else:
     chemin = None
     try:

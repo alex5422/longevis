@@ -764,9 +764,9 @@ st.markdown(
     'mesures biologiques et cognitives, pour compléter à terme les biomarqueurs '
     'issus de la vidéo.</p>', unsafe_allow_html=True)
 
-st.markdown('<p class="iv-foot"><b>Outil de recherche — pas un dispositif '
-            'médical.</b> Aucun diagnostic, aucune prédiction d\'espérance de vie. '
-            'Les repères proviennent d\'études de population : ils décrivent des '
-            'moyennes dans de grands groupes, jamais la trajectoire d\'une '
-            'personne.<br><b>Vos vidéos ne sont pas conservées</b> : chaque fichier '
-            'est supprimé dès l\'analyse terminée.</p>', unsafe_allow_html=True)
+st.markdown('<p class="iv-foot">Aucun diagnostic, aucune prédiction d\'espérance '
+            'de vie. Les repères proviennent d\'études de population : ils '
+            'décrivent des moyennes dans de grands groupes, jamais la trajectoire '
+            'd\'une personne.<br><b>Vos vidéos ne sont pas conservées</b> : chaque '
+            'fichier est supprimé dès l\'analyse terminée.</p>',
+            unsafe_allow_html=True)

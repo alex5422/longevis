@@ -14,7 +14,7 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from . import body, cardio, derma, gait, index, neuro, rppg, video
+from . import body, cardio, derma, elasticite, gait, index, neuro, rppg, sollicitation, tonus, video
 from .config import DEFAULT, ProcessingConfig
 
 
@@ -52,6 +52,35 @@ def analyze_body(path: str, task: str = "auto",
             "frame_size": tuple(b.frame_size)}
     return {"features": res["features"], "meta": meta,
             "signals": res["signals"], "segments": res["segments"], "traces": b}
+
+
+def _analyze_beta(path: str, analyze_fn) -> Dict[str, object]:
+    """Squelette commun aux 3 nouveaux tests bêta : même silhouette extraite
+    (`body.extract_body`), analyse spécifique déléguée à `analyze_fn(b)`,
+    mêmes clés de retour qu'`analyze_body` pour un affichage uniforme."""
+    b = body.extract_body(path)
+    res = analyze_fn(b)
+    meta = {"fps": b.fps, "n_frames": b.n_frames, "duration_s": b.duration_s,
+            "body_detection_rate": b.detection_rate, "body_mode": b.mode,
+            "camera_motion_px": b.camera_motion_px, "task": res["task"],
+            "frame_size": tuple(b.frame_size)}
+    return {"features": res["features"], "meta": meta,
+            "signals": res["signals"], "segments": res["segments"], "traces": b}
+
+
+def analyze_tonus(path: str) -> Dict[str, object]:
+    """Gainage chronométré filmé de profil — bêta, hors score Kinexa."""
+    return _analyze_beta(path, tonus.analyze_tonus)
+
+
+def analyze_sollicitation(path: str) -> Dict[str, object]:
+    """Petits sauts talon filmés — bêta, hors score Kinexa."""
+    return _analyze_beta(path, sollicitation.analyze_sollicitation)
+
+
+def analyze_elasticite(path: str) -> Dict[str, object]:
+    """Flexion/étirement filmé de face — bêta, hors score Kinexa."""
+    return _analyze_beta(path, elasticite.analyze_elasticite)
 
 
 def analyze(path: str, mode: str = "auto", cfg: ProcessingConfig = DEFAULT,

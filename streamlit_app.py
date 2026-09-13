@@ -163,6 +163,7 @@ html,body,[class*="css"]{font-family:var(--f);color:var(--text);
 .t-ko{color:var(--bad);background:rgba(255,107,107,.11);border-color:rgba(255,107,107,.24)}
 .t-te{color:var(--faint);background:rgba(255,255,255,.05);border-color:var(--edge)}
 .t-av{color:var(--a1);background:rgba(91,140,255,.11);border-color:rgba(91,140,255,.24)}
+.t-be{color:var(--warn);background:rgba(255,184,77,.11);border-color:rgba(255,184,77,.24)}
 
 /* ---------- À venir ---------- */
 .iv-soon-list{display:flex;flex-direction:column;gap:10px;margin-top:6px}
@@ -734,6 +735,79 @@ else:
     finally:
         if chemin and os.path.exists(chemin):
             os.remove(chemin)
+
+st.markdown('<p class="iv-h" style="margin-top:56px">Nouveaux tests '
+           '<span class="tag t-be" style="margin-left:10px">bêta</span></p>',
+           unsafe_allow_html=True)
+st.markdown('<p class="iv-cap" style="margin:-10px 0 18px">Trois pistes en évaluation '
+           'avec l\'équipe médicale, chacune avec son propre geste de capture — '
+           'pas encore intégrées aux scores Kinexa, en attente de calibration. '
+           'L\'équilibre, lui, est déjà mesuré dans Bio-Mobility à partir de '
+           'l\'oscillation pendant la marche.</p>', unsafe_allow_html=True)
+
+TESTS_BETA = [
+    {"cle": "tonus", "titre": "Tonus (gainage)",
+     "aide": "Filmez de profil, en appui sur avant-bras et pointes de pieds, "
+             "en restant le plus immobile possible.",
+     "fn": pipeline.analyze_tonus,
+     "cartes": lambda f: [
+         carte("Durée tenue", f.get("gainage_duree_s"), " s", dec=1),
+         carte("Stabilité", f.get("gainage_stabilite"), "/100", dec=0),
+         carte("Alignement", f.get("gainage_alignement"), "/100", dec=0),
+     ]},
+    {"cle": "sollicitation", "titre": "Sollicitation anti-ostéoporotique",
+     "aide": "Filmez de profil ou de face une série de petits sauts talon au sol.",
+     "fn": pipeline.analyze_sollicitation,
+     "cartes": lambda f: [
+         carte("Impacts détectés", f.get("impact_nombre"), "", dec=0),
+         carte("Cadence", f.get("impact_taux_par_min"), " /min", dec=0),
+         carte("Vitesse à l'impact", f.get("impact_vitesse_descente"), " px/s", dec=0),
+     ]},
+    {"cle": "elasticite", "titre": "Élasticité",
+     "aide": "Filmez de face une flexion avant ou un étirement tenu au point le plus loin.",
+     "fn": pipeline.analyze_elasticite,
+     "cartes": lambda f: [
+         carte("Amplitude", f.get("flexion_amplitude_pct"), " %", dec=0),
+         carte("Tenue au maximum", f.get("flexion_maintien_s"), " s", dec=1),
+     ]},
+]
+
+for _test in TESTS_BETA:
+    with st.expander(_test["titre"]):
+        st.markdown(f'<p class="iv-cap" style="margin:0 0 12px">{_test["aide"]}</p>',
+                    unsafe_allow_html=True)
+        _f_beta = st.file_uploader("Vidéo", key=f"beta_{_test['cle']}",
+                                   label_visibility="collapsed")
+        _go_beta = st.button("Analyser", key=f"go_{_test['cle']}",
+                             disabled=_f_beta is None)
+        if _go_beta and _f_beta is not None:
+            if os.path.splitext(_f_beta.name)[1].lower() not in EXTENSIONS_VIDEO:
+                st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
+                            'Formats acceptés : MP4, MOV, AVI, MKV, WebM, M4V.</div>',
+                            unsafe_allow_html=True)
+            else:
+                _chemin_beta = None
+                try:
+                    _suffixe = os.path.splitext(_f_beta.name)[1] or ".mp4"
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=_suffixe) as _tmp:
+                        _tmp.write(_f_beta.getbuffer())
+                        _chemin_beta = _tmp.name
+                    with st.spinner("Analyse en cours…"):
+                        _res_beta = _test["fn"](_chemin_beta)
+                    st.markdown('<div class="iv-grid">' +
+                                "".join(_test["cartes"](_res_beta["features"])) +
+                                '</div>', unsafe_allow_html=True)
+                except Exception:
+                    st.markdown('<div class="iv-msg iv-msg--stop">'
+                                '<b>L\'analyse a échoué.</b> Vérifiez que le fichier '
+                                'est une vidéo lisible.</div>', unsafe_allow_html=True)
+                    st.code(traceback.format_exc(limit=2))
+                finally:
+                    if _chemin_beta and os.path.exists(_chemin_beta):
+                        os.remove(_chemin_beta)
+        st.markdown('<p class="iv-cap" style="margin:12px 0 0">Comme pour la marche : '
+                    'la vidéo est analysée puis supprimée, jamais conservée sur nos '
+                    'serveurs.</p>', unsafe_allow_html=True)
 
 st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
            unsafe_allow_html=True)

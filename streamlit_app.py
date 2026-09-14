@@ -36,6 +36,10 @@ try:                                   # les figures de vitalité
     from longevis import vue
 except ImportError:
     vue = None
+try:                                   # rejeu vidéo + courbe des 3 tests
+    from longevis import rejeu_beta
+except ImportError:
+    rejeu_beta = None
 import streamlit.components.v1 as components
 from longevis.config import METHOD_NOISE_FLOOR, REFERENCE_NORMS
 from longevis.report import LABELS, UNITS
@@ -736,14 +740,12 @@ else:
         if chemin and os.path.exists(chemin):
             os.remove(chemin)
 
-st.markdown('<p class="iv-h" style="margin-top:56px">Nouveaux tests '
-           '<span class="tag t-be" style="margin-left:10px">bêta</span></p>',
+st.markdown('<p class="iv-h" style="margin-top:56px">Tonus, sollicitation et élasticité</p>',
            unsafe_allow_html=True)
-st.markdown('<p class="iv-cap" style="margin:-10px 0 18px">Trois pistes en évaluation '
-           'avec l\'équipe médicale, chacune avec son propre geste de capture — '
-           'pas encore intégrées aux scores Kinexa, en attente de calibration. '
-           'L\'équilibre, lui, est déjà mesuré dans Bio-Mobility à partir de '
-           'l\'oscillation pendant la marche.</p>', unsafe_allow_html=True)
+st.markdown('<p class="iv-cap" style="margin:-10px 0 18px">Trois gestes filmés, trois '
+           'lectures complémentaires à la marche. L\'équilibre, lui, est déjà mesuré '
+           'dans Bio-Mobility à partir de l\'oscillation pendant la marche.</p>',
+           unsafe_allow_html=True)
 
 TESTS_BETA = [
     {"cle": "tonus", "titre": "Tonus (gainage)",
@@ -754,22 +756,25 @@ TESTS_BETA = [
          carte("Durée tenue", f.get("gainage_duree_s"), " s", dec=1),
          carte("Stabilité", f.get("gainage_stabilite"), "/100", dec=0),
          carte("Alignement", f.get("gainage_alignement"), "/100", dec=0),
-     ]},
+     ],
+     "signal_cle": "trunk_y", "signal_titre": "Position verticale du tronc", "signal_unite": "px"},
     {"cle": "sollicitation", "titre": "Sollicitation anti-ostéoporotique",
      "aide": "Filmez de profil ou de face une série de petits sauts talon au sol.",
      "fn": pipeline.analyze_sollicitation,
      "cartes": lambda f: [
          carte("Impacts détectés", f.get("impact_nombre"), "", dec=0),
          carte("Cadence", f.get("impact_taux_par_min"), " /min", dec=0),
-         carte("Vitesse à l'impact", f.get("impact_vitesse_descente"), " px/s", dec=0),
-     ]},
+         carte("Vitesse à l'impact", f.get("impact_vitesse_descente"), " m/s", dec=2),
+     ],
+     "signal_cle": "foot_y", "signal_titre": "Hauteur du pied", "signal_unite": "px"},
     {"cle": "elasticite", "titre": "Élasticité",
      "aide": "Filmez de face une flexion avant ou un étirement tenu au point le plus loin.",
      "fn": pipeline.analyze_elasticite,
      "cartes": lambda f: [
          carte("Amplitude", f.get("flexion_amplitude_pct"), " %", dec=0),
          carte("Tenue au maximum", f.get("flexion_maintien_s"), " s", dec=1),
-     ]},
+     ],
+     "signal_cle": "height_px", "signal_titre": "Hauteur de la silhouette", "signal_unite": "px"},
 ]
 
 for _test in TESTS_BETA:
@@ -793,10 +798,22 @@ for _test in TESTS_BETA:
                         _tmp.write(_f_beta.getbuffer())
                         _chemin_beta = _tmp.name
                     with st.spinner("Analyse en cours…"):
-                        _res_beta = _test["fn"](_chemin_beta)
+                        _res_beta = _test["fn"](
+                            _chemin_beta,
+                            subject_height_m=None if echelle > 0 else taille,
+                            px_per_m=echelle if echelle > 0 else None)
                     st.markdown('<div class="iv-grid">' +
                                 "".join(_test["cartes"](_res_beta["features"])) +
                                 '</div>', unsafe_allow_html=True)
+                    if rejeu_beta is not None:
+                        _signal_beta = _res_beta["signals"].get(_test["signal_cle"])
+                        _fps_beta = _res_beta["signals"].get("fps")
+                        if _signal_beta is not None and _fps_beta:
+                            _html_beta = rejeu_beta.rejeu_signal(
+                                _chemin_beta, _signal_beta, _fps_beta,
+                                _test["signal_unite"], _test["signal_titre"])
+                            if _html_beta:
+                                components.html(_html_beta, height=560, scrolling=False)
                 except Exception:
                     st.markdown('<div class="iv-msg iv-msg--stop">'
                                 '<b>L\'analyse a échoué.</b> Vérifiez que le fichier '

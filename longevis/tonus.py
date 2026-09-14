@@ -9,7 +9,7 @@ indicateur indirect de stabilité, pas une goniométrie.
 """
 
 from __future__ import annotations
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 from scipy import signal as sps
@@ -89,7 +89,10 @@ def hold(centroid: np.ndarray, trunk_y: np.ndarray, bbox: np.ndarray,
             "gainage_alignement": round(alignement, 1)}
 
 
-def analyze_tonus(b: BodyTraces) -> Dict[str, object]:
+def analyze_tonus(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:
+    # `px_per_m` n'est pas utilisé ici (durée, stabilité et alignement sont
+    # déjà sans unité physique) — accepté pour un appel uniforme depuis
+    # `pipeline._analyze_beta` avec les deux autres tests bêta.
     f = hold(b.centroid, b.trunk_y, b.bbox, b.valid, b.fps)
     return {"task": "gainage", "features": f, "segments": {},
             "signals": {"trunk_y": b.trunk_y, "fps": b.fps}}

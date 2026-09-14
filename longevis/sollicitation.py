@@ -10,7 +10,7 @@ n'est pas une mesure directe de force — seulement de vitesse de silhouette.
 """
 
 from __future__ import annotations
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 from scipy import signal as sps
@@ -20,7 +20,14 @@ from .body import BodyTraces
 
 
 def impacts(foot_y: np.ndarray, valid: np.ndarray, fps: float,
-            prominence_px: float = 8.0) -> Dict[str, float]:
+            prominence_px: float = 8.0,
+            px_per_m: Optional[float] = None) -> Dict[str, float]:
+    """`px_per_m` : échelle de conversion (pixels par mètre), fournie par
+    l'appelant — taille du sujet déclarée ou distance connue dans le champ.
+    Sans elle, la vitesse reste en pixels/s, une unité qui ne dit rien à un
+    médecin : impossible de comparer deux vidéos filmées à des distances
+    différentes.
+    """
     n = len(valid)
     vide = {"impact_nombre": 0.0, "impact_taux_par_min": float("nan"),
             "impact_vitesse_descente": float("nan")}
@@ -46,14 +53,18 @@ def impacts(foot_y: np.ndarray, valid: np.ndarray, fps: float,
             v = (y[p] - y[a]) / ((p - a) / fps)   # px/s, positif = descente
             if v > 0:
                 vitesses.append(v)
-    v_moy = float(np.mean(vitesses)) if vitesses else float("nan")
+    v_moy_px_s = float(np.mean(vitesses)) if vitesses else float("nan")
+    if px_per_m and np.isfinite(v_moy_px_s):
+        v_moy = v_moy_px_s / px_per_m           # m/s
+    else:
+        v_moy = float("nan")
 
     return {"impact_nombre": float(len(pics)),
             "impact_taux_par_min": round(taux, 1),
-            "impact_vitesse_descente": round(v_moy, 1) if np.isfinite(v_moy) else float("nan")}
+            "impact_vitesse_descente": round(v_moy, 2) if np.isfinite(v_moy) else float("nan")}
 
 
-def analyze_sollicitation(b: BodyTraces) -> Dict[str, object]:
-    f = impacts(b.foot_y, b.valid, b.fps)
+def analyze_sollicitation(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:
+    f = impacts(b.foot_y, b.valid, b.fps, px_per_m=px_per_m)
     return {"task": "sollicitation", "features": f, "segments": {},
             "signals": {"foot_y": b.foot_y, "fps": b.fps}}

@@ -54,33 +54,46 @@ def analyze_body(path: str, task: str = "auto",
             "signals": res["signals"], "segments": res["segments"], "traces": b}
 
 
-def _analyze_beta(path: str, analyze_fn) -> Dict[str, object]:
-    """Squelette commun aux 3 nouveaux tests bêta : même silhouette extraite
-    (`body.extract_body`), analyse spécifique déléguée à `analyze_fn(b)`,
-    mêmes clés de retour qu'`analyze_body` pour un affichage uniforme."""
+def _analyze_beta(path: str, analyze_fn,
+                  subject_height_m: Optional[float] = None,
+                  px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Squelette commun aux 3 tests tonus/sollicitation/élasticité : même
+    silhouette extraite (`body.extract_body`), même échelle pixels-par-mètre
+    qu'`analyze_body` (distance connue si fournie, sinon stature déclarée),
+    analyse spécifique déléguée à `analyze_fn(b, px_per_m)`, mêmes clés de
+    retour qu'`analyze_body` pour un affichage uniforme."""
     b = body.extract_body(path)
-    res = analyze_fn(b)
+    scale = px_per_m
+    if scale is None and subject_height_m:
+        hh = b.height_px[np.isfinite(b.height_px)]
+        if hh.size:
+            stature_px = float(np.percentile(hh, 97))
+            scale = stature_px / subject_height_m
+    res = analyze_fn(b, scale)
     meta = {"fps": b.fps, "n_frames": b.n_frames, "duration_s": b.duration_s,
             "body_detection_rate": b.detection_rate, "body_mode": b.mode,
             "camera_motion_px": b.camera_motion_px, "task": res["task"],
-            "frame_size": tuple(b.frame_size)}
+            "frame_size": tuple(b.frame_size), "px_per_m": float(scale) if scale else float("nan")}
     return {"features": res["features"], "meta": meta,
             "signals": res["signals"], "segments": res["segments"], "traces": b}
 
 
-def analyze_tonus(path: str) -> Dict[str, object]:
-    """Gainage chronométré filmé de profil — bêta, hors score Kinexa."""
-    return _analyze_beta(path, tonus.analyze_tonus)
+def analyze_tonus(path: str, subject_height_m: Optional[float] = None,
+                  px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Gainage chronométré filmé de profil — hors score Kinexa."""
+    return _analyze_beta(path, tonus.analyze_tonus, subject_height_m, px_per_m)
 
 
-def analyze_sollicitation(path: str) -> Dict[str, object]:
-    """Petits sauts talon filmés — bêta, hors score Kinexa."""
-    return _analyze_beta(path, sollicitation.analyze_sollicitation)
+def analyze_sollicitation(path: str, subject_height_m: Optional[float] = None,
+                          px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Petits sauts talon filmés — hors score Kinexa."""
+    return _analyze_beta(path, sollicitation.analyze_sollicitation, subject_height_m, px_per_m)
 
 
-def analyze_elasticite(path: str) -> Dict[str, object]:
-    """Flexion/étirement filmé de face — bêta, hors score Kinexa."""
-    return _analyze_beta(path, elasticite.analyze_elasticite)
+def analyze_elasticite(path: str, subject_height_m: Optional[float] = None,
+                       px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Flexion/étirement filmé de face — hors score Kinexa."""
+    return _analyze_beta(path, elasticite.analyze_elasticite, subject_height_m, px_per_m)
 
 
 def analyze(path: str, mode: str = "auto", cfg: ProcessingConfig = DEFAULT,

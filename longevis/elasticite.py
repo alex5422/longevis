@@ -8,7 +8,7 @@ mesure grossière de l'amplitude, pas une goniométrie.
 """
 
 from __future__ import annotations
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 
@@ -42,7 +42,10 @@ def amplitude(height_px: np.ndarray, valid: np.ndarray, fps: float,
             "flexion_maintien_s": round(tenue, 1)}
 
 
-def analyze_elasticite(b: BodyTraces) -> Dict[str, object]:
+def analyze_elasticite(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:
+    # `px_per_m` n'est pas utilisé ici (amplitude en % et tenue en secondes
+    # sont déjà sans unité physique) — accepté pour un appel uniforme depuis
+    # `pipeline._analyze_beta` avec les deux autres tests bêta.
     f = amplitude(b.height_px, b.valid, b.fps)
     return {"task": "elasticite", "features": f, "segments": {},
             "signals": {"height_px": b.height_px, "fps": b.fps}}

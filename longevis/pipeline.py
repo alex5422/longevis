@@ -54,10 +54,10 @@ def analyze_body(path: str, task: str = "auto",
             "signals": res["signals"], "segments": res["segments"], "traces": b}
 
 
-def _analyze_beta(path: str, analyze_fn,
-                  subject_height_m: Optional[float] = None,
-                  px_per_m: Optional[float] = None) -> Dict[str, object]:
-    """Squelette commun aux 3 tests tonus/sollicitation/élasticité : même
+def _analyze_geste(path: str, analyze_fn,
+                   subject_height_m: Optional[float] = None,
+                   px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Squelette commun aux tests tonus/sollicitation/élasticité : même
     silhouette extraite (`body.extract_body`), même échelle pixels-par-mètre
     qu'`analyze_body` (distance connue si fournie, sinon stature déclarée),
     analyse spécifique déléguée à `analyze_fn(b, px_per_m)`, mêmes clés de
@@ -81,19 +81,46 @@ def _analyze_beta(path: str, analyze_fn,
 def analyze_tonus(path: str, subject_height_m: Optional[float] = None,
                   px_per_m: Optional[float] = None) -> Dict[str, object]:
     """Gainage chronométré filmé de profil — hors score Kinexa."""
-    return _analyze_beta(path, tonus.analyze_tonus, subject_height_m, px_per_m)
+    return _analyze_geste(path, tonus.analyze_tonus, subject_height_m, px_per_m)
 
 
 def analyze_sollicitation(path: str, subject_height_m: Optional[float] = None,
                           px_per_m: Optional[float] = None) -> Dict[str, object]:
     """Petits sauts talon filmés — hors score Kinexa."""
-    return _analyze_beta(path, sollicitation.analyze_sollicitation, subject_height_m, px_per_m)
+    return _analyze_geste(path, sollicitation.analyze_sollicitation, subject_height_m, px_per_m)
 
 
 def analyze_elasticite(path: str, subject_height_m: Optional[float] = None,
                        px_per_m: Optional[float] = None) -> Dict[str, object]:
     """Flexion/étirement filmé de face — hors score Kinexa."""
-    return _analyze_beta(path, elasticite.analyze_elasticite, subject_height_m, px_per_m)
+    return _analyze_geste(path, elasticite.analyze_elasticite, subject_height_m, px_per_m)
+
+
+def analyze_equilibre(path: str, subject_height_m: Optional[float] = None,
+                      px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Appui unipodal chronométré, filmé de face — hors score Kinexa.
+
+    Réutilise directement `analyze_body` avec la tâche « posture » forcée :
+    le moteur de mesure de l'oscillation posturale existe déjà dans
+    `gait.postural_sway`, seule l'auto-détection de tâche l'empêchait
+    d'être sollicité de façon fiable depuis une vidéo dédiée."""
+    return analyze_body(path, task="posture", subject_height_m=subject_height_m,
+                        px_per_m=px_per_m)
+
+
+def analyze_transfert(path: str, subject_height_m: Optional[float] = None,
+                      px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Levers de chaise chronométrés, filmés de profil — hors score Kinexa."""
+    return analyze_body(path, task="leve", subject_height_m=subject_height_m,
+                        px_per_m=px_per_m)
+
+
+def analyze_mouvement_libre(path: str, subject_height_m: Optional[float] = None,
+                            px_per_m: Optional[float] = None) -> Dict[str, object]:
+    """Geste répété au choix (gymnastique, tai-chi, rééducation), filmé de
+    face ou de profil — hors score Kinexa."""
+    return analyze_body(path, task="mouvement", subject_height_m=subject_height_m,
+                        px_per_m=px_per_m)
 
 
 def analyze(path: str, mode: str = "auto", cfg: ProcessingConfig = DEFAULT,

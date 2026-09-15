@@ -1,7 +1,7 @@
 """Sollicitation anti-ostéoporotique — petits sauts talon filmés.
 
-Test bêta : pas encore intégré aux scores Kinexa, en attente de calibration
-sur cohorte. Approxime la charge imposée à l'os par la vitesse de descente
+Hors score Kinexa : mesure indépendante, non pondérée dans les biomarqueurs
+agrégés. Approxime la charge imposée à l'os par la vitesse de descente
 juste avant l'impact au sol — un proxy usuel du taux de charge / de la force
 de réaction au sol dans la littérature sur la stimulation ostéogénique
 (Frost, "mechanostat", 1987 ; Turner & Robling, 2003 : le stimulus

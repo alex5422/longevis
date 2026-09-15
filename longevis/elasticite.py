@@ -1,7 +1,7 @@
 """Élasticité — amplitude de flexion filmée de face.
 
-Test bêta : pas encore intégré aux scores Kinexa, en attente de calibration
-sur cohorte. Sans repérage articulaire, ce module ne mesure pas un angle
+Hors score Kinexa : mesure indépendante, non pondérée dans les biomarqueurs
+agrégés. Sans repérage articulaire, ce module ne mesure pas un angle
 mais la réduction relative de la hauteur de silhouette pendant une flexion
 avant ou un étirement, par rapport à la position debout de référence — une
 mesure grossière de l'amplitude, pas une goniométrie.
@@ -45,7 +45,7 @@ def amplitude(height_px: np.ndarray, valid: np.ndarray, fps: float,
 def analyze_elasticite(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:
     # `px_per_m` n'est pas utilisé ici (amplitude en % et tenue en secondes
     # sont déjà sans unité physique) — accepté pour un appel uniforme depuis
-    # `pipeline._analyze_beta` avec les deux autres tests bêta.
+    # `pipeline._analyze_geste` avec les autres tests complémentaires.
     f = amplitude(b.height_px, b.valid, b.fps)
     return {"task": "elasticite", "features": f, "segments": {},
             "signals": {"height_px": b.height_px, "fps": b.fps}}

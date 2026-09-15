@@ -743,24 +743,36 @@ else:
 st.markdown('<p class="iv-h" style="margin-top:56px">Six mesures complémentaires à la '
            'marche</p>', unsafe_allow_html=True)
 st.markdown('<p class="iv-cap" style="margin:-10px 0 18px">Tonus, sollicitation, '
-           'élasticité, équilibre, transferts assis-debout et mouvement libre — six '
-           'gestes filmés séparément, chacun avec son rejeu vidéo et la courbe du '
-           'signal mesuré.</p>', unsafe_allow_html=True)
+           'élasticité, équilibre, transferts assis-debout et mouvement libre — une '
+           'seule vidéo, analysée pour chacun des six gestes depuis les onglets '
+           'ci-dessous, avec pour chacun un rejeu incrusté et un choix de mesure à '
+           'superposer sur l\'image.</p>', unsafe_allow_html=True)
 
 TAILLE_REJEU_FACTEUR = {"compact": 0.7, "normal": 0.9, "grand": 1.15, "immense": 1.5}
-MOUVEMENT_SIGNAL = {"horizontal": ("cx", "Position horizontale du sujet"),
-                    "vertical": ("cy", "Position verticale du sujet"),
-                    "membres": ("spread", "Écartement des membres")}
+MOUVEMENT_SIGNAL = {"horizontal": "cx", "vertical": "cy", "membres": "spread"}
+
+LABELS_SIGNAUX = {
+    "cx": "Position horizontale du sujet",
+    "cy": "Position verticale du sujet",
+    "trunk_y": "Position verticale du tronc",
+    "foot_y": "Hauteur du pied",
+    "height_px": "Hauteur de la silhouette",
+    "height": "Hauteur de la silhouette",
+    "spread": "Écartement des membres",
+}
 
 
-def _signal_geste(test, features):
-    """Clé, titre et unité du signal à rejouer — dynamiques pour le mouvement
-    libre, où le signal le plus parlant dépend de ce qui a été filmé."""
+def _signal_defaut(test, features):
+    """Clé du signal proposé par défaut dans le sélecteur d'incrustation —
+    dynamique pour le mouvement libre, où le signal le plus parlant dépend
+    de ce qui a été filmé."""
     if test["cle"] == "mouvement":
-        cle, titre = MOUVEMENT_SIGNAL.get(features.get("move_source"),
-                                          ("cx", "Signal du mouvement"))
-        return cle, titre, test["signal_unite"]
-    return test["signal_cle"], test["signal_titre"], test["signal_unite"]
+        return MOUVEMENT_SIGNAL.get(features.get("move_source"), "cx")
+    return test["signal_cle"]
+
+
+def _cartes_html(metriques):
+    return "".join(carte(nom, val, unite, dec=dec) for (nom, val, unite, dec) in metriques)
 
 
 TESTS_GESTES = [
@@ -768,119 +780,170 @@ TESTS_GESTES = [
      "aide": "Filmez de profil, en appui sur avant-bras et pointes de pieds, "
              "en restant le plus immobile possible.",
      "fn": pipeline.analyze_tonus,
-     "cartes": lambda f: [
-         carte("Durée tenue", f.get("gainage_duree_s"), " s", dec=1),
-         carte("Stabilité", f.get("gainage_stabilite"), "/100", dec=0),
-         carte("Alignement", f.get("gainage_alignement"), "/100", dec=0),
+     "metriques": lambda f: [
+         ("Durée tenue", f.get("gainage_duree_s"), " s", 1),
+         ("Stabilité", f.get("gainage_stabilite"), "/100", 0),
+         ("Alignement", f.get("gainage_alignement"), "/100", 0),
      ],
      "signal_cle": "trunk_y", "signal_titre": "Position verticale du tronc", "signal_unite": "px"},
     {"cle": "sollicitation", "titre": "Sollicitation anti-ostéoporotique",
      "aide": "Filmez de profil ou de face une série de petits sauts talon au sol.",
      "fn": pipeline.analyze_sollicitation,
-     "cartes": lambda f: [
-         carte("Impacts détectés", f.get("impact_nombre"), "", dec=0),
-         carte("Cadence", f.get("impact_taux_par_min"), " /min", dec=0),
-         carte("Vitesse à l'impact", f.get("impact_vitesse_descente"), " m/s", dec=2),
+     "metriques": lambda f: [
+         ("Impacts détectés", f.get("impact_nombre"), "", 0),
+         ("Cadence", f.get("impact_taux_par_min"), " /min", 0),
+         ("Vitesse à l'impact", f.get("impact_vitesse_descente"), " m/s", 2),
      ],
      "signal_cle": "foot_y", "signal_titre": "Hauteur du pied", "signal_unite": "px"},
     {"cle": "elasticite", "titre": "Élasticité",
      "aide": "Filmez de face une flexion avant ou un étirement tenu au point le plus loin.",
      "fn": pipeline.analyze_elasticite,
-     "cartes": lambda f: [
-         carte("Amplitude", f.get("flexion_amplitude_pct"), " %", dec=0),
-         carte("Tenue au maximum", f.get("flexion_maintien_s"), " s", dec=1),
+     "metriques": lambda f: [
+         ("Amplitude", f.get("flexion_amplitude_pct"), " %", 0),
+         ("Tenue au maximum", f.get("flexion_maintien_s"), " s", 1),
      ],
      "signal_cle": "height_px", "signal_titre": "Hauteur de la silhouette", "signal_unite": "px"},
     {"cle": "equilibre", "titre": "Équilibre",
      "aide": "Filmez de face un appui unipodal (une jambe levée), bras croisés, "
              "en restant immobile 15 à 30 secondes.",
      "fn": pipeline.analyze_equilibre,
-     "cartes": lambda f: [
-         carte("Oscillation avant-arrière", f.get("sway_rms_ap_mm"), " mm", dec=1),
-         carte("Oscillation latérale", f.get("sway_rms_ml_mm"), " mm", dec=1),
-         carte("Vitesse d'oscillation", f.get("sway_path_mm_s"), " mm/s", dec=0),
+     "metriques": lambda f: [
+         ("Oscillation avant-arrière", f.get("sway_rms_ap_mm"), " mm", 1),
+         ("Oscillation latérale", f.get("sway_rms_ml_mm"), " mm", 1),
+         ("Vitesse d'oscillation", f.get("sway_path_mm_s"), " mm/s", 0),
      ],
      "signal_cle": "cx", "signal_titre": "Position du centre du corps", "signal_unite": "px"},
     {"cle": "transfert", "titre": "Transferts assis-debout",
      "aide": "Filmez de profil une série de levers et d'assises depuis une chaise, "
              "à un rythme régulier.",
      "fn": pipeline.analyze_transfert,
-     "cartes": lambda f: [
-         carte("Levers détectés", f.get("sts_count"), "", dec=0),
-         carte("Durée moyenne", f.get("sts_mean_dur_s"), " s", dec=1),
-         carte("Vitesse de lever", f.get("sts_rise_speed"), " stature/s", dec=2),
+     "metriques": lambda f: [
+         ("Levers détectés", f.get("sts_count"), "", 0),
+         ("Durée moyenne", f.get("sts_mean_dur_s"), " s", 1),
+         ("Vitesse de lever", f.get("sts_rise_speed"), " stature/s", 2),
      ],
      "signal_cle": "height", "signal_titre": "Hauteur de la silhouette", "signal_unite": "px"},
     {"cle": "mouvement", "titre": "Mouvement libre",
      "aide": "Filmez de face ou de profil un mouvement répété au choix : "
              "gymnastique douce, tai-chi, geste de rééducation.",
      "fn": pipeline.analyze_mouvement_libre,
-     "cartes": lambda f: [
-         carte("Amplitude du geste", f.get("move_amplitude_stature"), " ×stature", dec=2),
-         carte("Rythme", f.get("move_rate_cpm"), " cycles/min", dec=0),
-         carte("Temps actif", f.get("move_active_pct"), " %", dec=0),
+     "metriques": lambda f: [
+         ("Amplitude du geste", f.get("move_amplitude_stature"), " ×stature", 2),
+         ("Rythme", f.get("move_rate_cpm"), " cycles/min", 0),
+         ("Temps actif", f.get("move_active_pct"), " %", 0),
      ],
      "signal_cle": "cx", "signal_titre": "Signal du mouvement", "signal_unite": "px"},
 ]
 
-for _test in TESTS_GESTES:
-    with st.expander(_test["titre"]):
+# ── vidéo unique, partagée par les six onglets ─────────────────────────────
+video_geste = st.file_uploader(
+    "Vidéo pour les six gestes", key="geste_video_partage",
+    help="Une seule vidéo suffit : chaque onglet ci-dessous l'analyse pour son "
+         "propre geste.")
+
+video_id_actuel = getattr(video_geste, "file_id", None)
+if video_id_actuel is None and video_geste is not None:
+    video_id_actuel = (video_geste.name, video_geste.size)
+
+if video_id_actuel != st.session_state.get("_gv_id"):
+    ancien = st.session_state.get("_gv_path")
+    if ancien and os.path.exists(ancien):
+        os.remove(ancien)
+    for _t in TESTS_GESTES:
+        st.session_state.pop(f"_gv_res_{_t['cle']}", None)
+        st.session_state.pop(f"_gv_signal_{_t['cle']}", None)
+        st.session_state.pop(f"_gv_vue_{_t['cle']}", None)
+    st.session_state["_gv_id"] = video_id_actuel
+    st.session_state["_gv_path"] = None
+    if video_geste is not None:
+        if os.path.splitext(video_geste.name)[1].lower() not in EXTENSIONS_VIDEO:
+            st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
+                        'Formats acceptés : MP4, MOV, AVI, MKV, WebM, M4V.</div>',
+                        unsafe_allow_html=True)
+        else:
+            _suffixe = os.path.splitext(video_geste.name)[1] or ".mp4"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=_suffixe) as _tmp:
+                _tmp.write(video_geste.getbuffer())
+                st.session_state["_gv_path"] = _tmp.name
+
+chemin_geste = st.session_state.get("_gv_path")
+
+if chemin_geste:
+    st.caption(f"Vidéo chargée : {video_geste.name} — commune aux six onglets, jamais "
+               "conservée au-delà de cette session. Pour l'enlever, utilisez le ×  "
+               "du champ ci-dessus.")
+else:
+    st.markdown('<p class="iv-cap" style="margin:0 0 18px">Comme pour la marche : '
+                'la vidéo est analysée puis supprimée, jamais conservée sur nos '
+                'serveurs.</p>', unsafe_allow_html=True)
+
+_onglets_gestes = st.tabs([_t["titre"] for _t in TESTS_GESTES])
+
+for _test, _onglet in zip(TESTS_GESTES, _onglets_gestes):
+    with _onglet:
+        _cle = _test["cle"]
         st.markdown(f'<p class="iv-cap" style="margin:0 0 12px">{_test["aide"]}</p>',
                     unsafe_allow_html=True)
-        _f_geste = st.file_uploader("Vidéo", key=f"geste_{_test['cle']}",
-                                    label_visibility="collapsed")
-        _go_geste = st.button("Analyser", key=f"go_{_test['cle']}",
-                              disabled=_f_geste is None)
-        if _go_geste and _f_geste is not None:
-            if os.path.splitext(_f_geste.name)[1].lower() not in EXTENSIONS_VIDEO:
-                st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
-                            'Formats acceptés : MP4, MOV, AVI, MKV, WebM, M4V.</div>',
-                            unsafe_allow_html=True)
-            else:
-                _chemin_geste = None
-                try:
-                    _suffixe = os.path.splitext(_f_geste.name)[1] or ".mp4"
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=_suffixe) as _tmp:
-                        _tmp.write(_f_geste.getbuffer())
-                        _chemin_geste = _tmp.name
-                    with st.spinner("Analyse en cours…"):
-                        _res_geste = _test["fn"](
-                            _chemin_geste,
-                            subject_height_m=None if echelle > 0 else taille,
-                            px_per_m=echelle if echelle > 0 else None)
-                    st.markdown('<div class="iv-grid">' +
-                                "".join(_test["cartes"](_res_geste["features"])) +
-                                '</div>', unsafe_allow_html=True)
-                    if rejeu_beta is not None:
-                        _scle, _stitre, _sunite = _signal_geste(_test, _res_geste["features"])
-                        _signal_g = _res_geste["signals"].get(_scle)
-                        _fps_g = _res_geste["signals"].get("fps")
-                        _facteur_g = TAILLE_REJEU_FACTEUR.get(taille_rejeu, 1.0)
-                        _html_geste = None
-                        if _signal_g is not None and _fps_g:
-                            _html_geste = rejeu_beta.rejeu_signal(
-                                _chemin_geste, _signal_g, _fps_g, _sunite, _stitre,
-                                facteur=_facteur_g)
-                        if _html_geste:
-                            components.html(
-                                _html_geste,
-                                height=rejeu_beta.hauteur_composant(_facteur_g),
-                                scrolling=False)
-                        else:
-                            st.markdown('<p class="iv-cap">Vidéo trop lourde pour le '
-                                        'rejeu (28 Mo maximum). Les mesures restent '
-                                        'complètes.</p>', unsafe_allow_html=True)
-                except Exception:
-                    st.markdown('<div class="iv-msg iv-msg--stop">'
-                                '<b>L\'analyse a échoué.</b> Vérifiez que le fichier '
-                                'est une vidéo lisible.</div>', unsafe_allow_html=True)
-                    st.code(traceback.format_exc(limit=2))
-                finally:
-                    if _chemin_geste and os.path.exists(_chemin_geste):
-                        os.remove(_chemin_geste)
-        st.markdown('<p class="iv-cap" style="margin:12px 0 0">Comme pour la marche : '
-                    'la vidéo est analysée puis supprimée, jamais conservée sur nos '
-                    'serveurs.</p>', unsafe_allow_html=True)
+        _go_geste = st.button("Analyser", key=f"go_{_cle}",
+                              disabled=chemin_geste is None,
+                              type="primary" if chemin_geste else "secondary")
+        if _go_geste and chemin_geste:
+            try:
+                with st.spinner("Analyse en cours…"):
+                    _res_geste = _test["fn"](
+                        chemin_geste,
+                        subject_height_m=None if echelle > 0 else taille,
+                        px_per_m=echelle if echelle > 0 else None)
+                st.session_state[f"_gv_res_{_cle}"] = _res_geste
+                st.session_state[f"_gv_signal_{_cle}"] = _signal_defaut(
+                    _test, _res_geste["features"])
+            except Exception:
+                st.session_state[f"_gv_res_{_cle}"] = None
+                st.markdown('<div class="iv-msg iv-msg--stop">'
+                            '<b>L\'analyse a échoué.</b> Vérifiez que le fichier '
+                            'est une vidéo lisible.</div>', unsafe_allow_html=True)
+                st.code(traceback.format_exc(limit=2))
+
+        _res_geste = st.session_state.get(f"_gv_res_{_cle}")
+        if _res_geste is not None:
+            _metriques = _test["metriques"](_res_geste["features"])
+            st.markdown('<div class="iv-grid">' + _cartes_html(_metriques) + '</div>',
+                        unsafe_allow_html=True)
+
+            _signaux = _res_geste.get("signals", {})
+            _cles_dispo = [k for k in _signaux if k != "fps" and _signaux.get(k) is not None]
+            _defaut = st.session_state.get(f"_gv_signal_{_cle}", _test["signal_cle"])
+            if _defaut not in _cles_dispo and _cles_dispo:
+                _defaut = _cles_dispo[0]
+
+            _vue = st.radio("Affichage", ["Vidéo", "Incrustation"],
+                            horizontal=True, key=f"_gv_vue_{_cle}")
+
+            if _vue == "Vidéo":
+                if chemin_geste and os.path.exists(chemin_geste):
+                    st.video(chemin_geste)
+            elif rejeu_beta is not None and _cles_dispo:
+                _choix = st.selectbox(
+                    "Mesure à superposer sur la vidéo", _cles_dispo,
+                    index=_cles_dispo.index(_defaut) if _defaut in _cles_dispo else 0,
+                    format_func=lambda k: LABELS_SIGNAUX.get(k, k),
+                    key=f"_gv_choix_{_cle}")
+                st.session_state[f"_gv_signal_{_cle}"] = _choix
+                _facteur_g = TAILLE_REJEU_FACTEUR.get(taille_rejeu, 1.0)
+                _html_geste = None
+                if chemin_geste:
+                    _html_geste = rejeu_beta.rejeu_geste(
+                        chemin_geste, _signaux, _res_geste["meta"], _choix,
+                        LABELS_SIGNAUX.get(_choix, _choix), "px", _metriques,
+                        facteur=_facteur_g)
+                if _html_geste:
+                    components.html(_html_geste,
+                                    height=rejeu_beta.hauteur_composant_geste(_facteur_g),
+                                    scrolling=False)
+                else:
+                    st.markdown('<p class="iv-cap">Vidéo trop lourde pour le rejeu '
+                                '(28 Mo maximum). Les mesures restent complètes.</p>',
+                                unsafe_allow_html=True)
 
 st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
            unsafe_allow_html=True)

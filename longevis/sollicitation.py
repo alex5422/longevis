@@ -67,4 +67,5 @@ def impacts(foot_y: np.ndarray, valid: np.ndarray, fps: float,
 def analyze_sollicitation(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:
     f = impacts(b.foot_y, b.valid, b.fps, px_per_m=px_per_m)
     return {"task": "sollicitation", "features": f, "segments": {},
-            "signals": {"foot_y": b.foot_y, "fps": b.fps}}
+            "signals": {"foot_y": b.foot_y, "cx": b.centroid[:, 0],
+                        "cy": b.centroid[:, 1], "fps": b.fps}}

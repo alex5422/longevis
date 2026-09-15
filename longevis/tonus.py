@@ -1,7 +1,7 @@
 """Tonus postural — gainage chronométré filmé de profil.
 
-Test bêta : pas encore intégré aux scores Kinexa, en attente de calibration
-sur cohorte. Sans repérage articulaire (il n'y a que le contour détecté de
+Hors score Kinexa : mesure indépendante, non pondérée dans les biomarqueurs
+agrégés. Sans repérage articulaire (il n'y a que le contour détecté de
 la silhouette, pas un squelette), ce module n'estime pas un angle de tronc —
 il regarde si la position tenue reste immobile et si la forme du contour
 (rapport largeur/hauteur) reste constante pendant l'appui, ce qui est un
@@ -92,7 +92,7 @@ def hold(centroid: np.ndarray, trunk_y: np.ndarray, bbox: np.ndarray,
 def analyze_tonus(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:
     # `px_per_m` n'est pas utilisé ici (durée, stabilité et alignement sont
     # déjà sans unité physique) — accepté pour un appel uniforme depuis
-    # `pipeline._analyze_beta` avec les deux autres tests bêta.
+    # `pipeline._analyze_geste` avec les autres tests complémentaires.
     f = hold(b.centroid, b.trunk_y, b.bbox, b.valid, b.fps)
     return {"task": "gainage", "features": f, "segments": {},
             "signals": {"trunk_y": b.trunk_y, "fps": b.fps}}

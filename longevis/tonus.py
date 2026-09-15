@@ -95,4 +95,5 @@ def analyze_tonus(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, 
     # `pipeline._analyze_geste` avec les autres tests complémentaires.
     f = hold(b.centroid, b.trunk_y, b.bbox, b.valid, b.fps)
     return {"task": "gainage", "features": f, "segments": {},
-            "signals": {"trunk_y": b.trunk_y, "fps": b.fps}}
+            "signals": {"trunk_y": b.trunk_y, "cx": b.centroid[:, 0],
+                        "cy": b.centroid[:, 1], "fps": b.fps}}

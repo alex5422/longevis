@@ -1,201 +1,318 @@
-"""Rejeu vidéo + courbe pour les six gestes complémentaires à la marche.
+"""Rejeu holographique pour les six gestes complémentaires à la marche.
 
-Version allégée du rejeu principal (`hologramme.py`) : pas de musique ni de
-biomarqueurs composites, seulement la vidéo et la courbe du signal mesuré,
-synchronisées sur l'horloge du lecteur — pour voir, image par image, à quel
-moment de la vidéo correspond quel chiffre.
+Même langage visuel que le rejeu principal (`hologramme.py`) : la vidéo est
+incrustée d'un repère qui suit, en direct, le point du corps mesuré —
+position ou étendue selon le geste — et de cartes de mesures qui montent à
+leur valeur pendant la lecture. Pas de partition musicale ici (elle est
+propre au caractère de la marche dans `hologramme.py`), mais le même souci :
+que l'écran parle par l'image, pas par un graphique de chiffres tout seul.
 
-Pensé pour être agréable à utiliser, pas seulement correct : la courbe est
-nette à toute taille d'écran (résolution du canevas recalculée sur sa taille
-réelle, pas figée), et on peut glisser le doigt ou la souris dessus pour
-parcourir la vidéo image par image, sans repasser par les commandes natives.
+Le repère se pose sur les coordonnées réelles du corps dans l'image (centre
+de masse, tronc ou pied suivi, étendue de la silhouette), normalisées par la
+taille de l'image — pas sur une position arbitraire déduite du graphique.
 """
 
 from __future__ import annotations
 import json
-from typing import Optional, Sequence
+from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 
 from .hologramme import video_base64
 
 
-def hauteur_composant(facteur: float = 1.0) -> int:
-    """Hauteur à réserver pour `components.html` : vidéo + bandeau + courbe."""
-    video_max = 480.0 * facteur
-    courbe = min(220.0, max(90.0, 130.0 * facteur))
-    return int(video_max + courbe + 96)
+def hauteur_composant_geste(facteur: float = 1.0) -> int:
+    """Hauteur à réserver pour `components.html` : vidéo + bandeau de cartes."""
+    return int(480.0 * facteur + 130)
 
 
-def rejeu_signal(chemin: str, signal: Sequence[float], fps: float,
-                  unite: str, titre: str, largeur: int = 700,
-                  facteur: float = 1.0) -> Optional[str]:
-    """HTML autonome : vidéo au-dessus, courbe du signal en dessous, avec une
-    ligne de lecture qui suit la vidéo et qu'on peut aussi glisser pour
-    chercher un instant précis. Retourne None si la vidéo est trop lourde à
-    incruster ou si le signal est inexploitable."""
+def _axes_for(signal_cle: str) -> Tuple[str, str, str, Optional[str]]:
+    """(genre, clé x, clé y, clé d'étendue) pour poser le repère sur le corps.
+
+    « point » : un repère ponctuel (position). « extent » : une étendue
+    verticale (taille de la silhouette), centrée sur le centre de masse.
+    """
+    return {
+        "trunk_y":   ("point",  "cx", "trunk_y", None),
+        "foot_y":    ("point",  "cx", "foot_y",  None),
+        "cx":        ("point",  "cx", "cy",      None),
+        "cy":        ("point",  "cx", "cy",      None),
+        "height_px": ("extent", "cx", "cy",      "height_px"),
+        "height":    ("extent", "cx", "cy",      "height"),
+        "spread":    ("extent", "cx", "cy",      "spread"),
+    }.get(signal_cle, ("point", "cx", "cy", None))
+
+
+def _serie_geste(signaux: Dict[str, object], signal_cle: str, fps: float,
+                 duree: float, frame_size, pas_par_s: float = 12.0):
+    """Échantillonne la position du repère et la valeur du signal affiché,
+    à un rythme fixe — assez pour un mouvement fluide, assez peu pour ne pas
+    alourdir la page avec des milliers de points."""
+    genre, xk, yk, hk = _axes_for(signal_cle)
+    val = np.asarray(signaux.get(signal_cle, []), dtype=float)
+    x = np.asarray(signaux.get(xk, []), dtype=float)
+    y = np.asarray(signaux.get(yk, []), dtype=float) if yk else np.array([])
+    hh = np.asarray(signaux.get(hk, []), dtype=float) if hk else np.array([])
+    n = val.size
+    if n < 4:
+        return [], genre
+
+    fs = frame_size if frame_size else (0, 0)
+    lw = float(fs[0]) if fs and fs[0] else 0.0
+    lh = float(fs[1]) if fs and len(fs) > 1 and fs[1] else 0.0
+    if not lw:
+        lw = float(np.nanmax(x)) * 1.25 if x.size and np.isfinite(x).any() else 1.0
+    if not lh:
+        if y.size and np.isfinite(y).any():
+            lh = float(np.nanmax(y)) * 1.4
+        elif hh.size and np.isfinite(hh).any():
+            lh = float(np.nanmax(hh)) * 1.6
+        else:
+            lh = lw * 1.4
+    lw = lw or 1.0
+    lh = lh or 1.0
+
+    sortie = []
+    for i in range(int(duree * pas_par_s) + 1):
+        ti = i / pas_par_s
+        j = int(min(n - 1, round(ti * fps)))
+        p = {"t": round(ti, 2)}
+        vv = val[j] if j < val.size else float("nan")
+        p["v"] = round(float(vv), 2) if np.isfinite(vv) else None
+        if x.size:
+            jx = min(j, x.size - 1)
+            if np.isfinite(x[jx]):
+                p["x"] = round(float(np.clip(x[jx] / lw, 0.0, 1.0)), 4)
+        if y.size:
+            jy = min(j, y.size - 1)
+            if np.isfinite(y[jy]):
+                p["y"] = round(float(np.clip(y[jy] / lh, 0.0, 1.0)), 4)
+        if genre == "extent" and hh.size:
+            jh = min(j, hh.size - 1)
+            if np.isfinite(hh[jh]):
+                p["h"] = round(float(np.clip(hh[jh] / lh, 0.03, 1.4)), 4)
+        sortie.append(p)
+    return sortie, genre
+
+
+def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object],
+                signal_cle: str, titre: str, unite: str,
+                metriques: Sequence[tuple], facteur: float = 1.0) -> Optional[str]:
+    """Retourne le lecteur holographique complet, ou None si la vidéo ne peut
+    pas être incrustée ou si aucune position n'a pu être suivie.
+
+    `metriques` : liste de tuples (nom, valeur, unité, décimales) — les
+    mêmes que celles déjà affichées en cartes statiques au-dessus, réutilisées
+    ici pour l'incrustation animée."""
     b64 = video_base64(chemin)
     if b64 is None:
         return None
-    sig = np.asarray(signal, dtype=float)
-    if sig.size < 2 or not np.isfinite(sig).any():
+
+    fps = float(signaux.get("fps") or 25.0)
+    duree = float(meta.get("duration_s") or 0.0) or 1.0
+    frame_size = meta.get("frame_size") or (0, 0)
+    serie, genre = _serie_geste(signaux, signal_cle, fps, duree, frame_size)
+    if not serie:
         return None
 
-    n = sig.size
-    t = np.arange(n) / max(1e-6, fps)
-    # sous-échantillonnage à ~200 points : la courbe reste lisible sans
-    # alourdir la page avec des milliers de points
-    if n > 200:
-        idx = np.linspace(0, n - 1, 200).astype(int)
-    else:
-        idx = np.arange(n)
-    t_s = [round(float(x), 2) for x in t[idx]]
-    v_s = [round(float(x), 3) if np.isfinite(x) else None for x in sig[idx]]
-    duree_s = float(t[-1]) if n else 0.0
-    data = json.dumps({"t": t_s, "v": v_s, "unite": unite, "duree": round(duree_s, 2)})
+    vals = [p["v"] for p in serie if p.get("v") is not None]
+    vmin = min(vals) if vals else 0.0
+    vmax = max(vals) if vals else 1.0
+
+    cartes = []
+    for (nom, val, u, dec) in metriques:
+        if isinstance(val, (int, float)) and np.isfinite(val):
+            cartes.append({"nom": nom, "val": round(float(val), dec),
+                           "unite": u, "dec": dec})
+
+    donnees = json.dumps({"serie": serie, "genre": genre, "unite": unite,
+                          "vmin": round(float(vmin), 3), "vmax": round(float(vmax), 3),
+                          "cartes": cartes, "duree": round(duree, 2)})
 
     video_max = int(480 * facteur)
-    hauteur_courbe = int(min(220, max(90, 130 * facteur)))
+    return (_GABARIT_GESTE.replace("__B64__", b64).replace("__DATA__", donnees)
+            .replace("__TITRE__", titre).replace("__VMAX__", str(video_max)))
 
-    return f"""
+
+_GABARIT_GESTE = """
 <style>
-  html,body{{margin:0;padding:0;background:transparent}}
-  *{{box-sizing:border-box}}
+html,body{margin:0;padding:0;background:transparent}
+*{box-sizing:border-box}
+.rjg-scene{position:relative;border-radius:18px;overflow:hidden;background:#07070C;
+ font-family:'Inter Tight',-apple-system,'Segoe UI',sans-serif;
+ box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.rjg-scene video{display:block;width:100%;filter:saturate(.85) contrast(1.05);
+ background:#000;max-height:__VMAX__px;object-fit:contain}
+.rjg-veil{position:absolute;inset:0;pointer-events:none;
+ background:radial-gradient(120% 90% at 50% 40%,transparent 35%,rgba(4,6,14,.68) 100%)}
+.rjg-scan{position:absolute;inset:0;pointer-events:none;opacity:.18;
+ background:repeating-linear-gradient(180deg,rgba(180,230,255,.14) 0 1px,transparent 1px 4px)}
+.rjg-grille{position:absolute;inset:0;pointer-events:none;opacity:.14;
+ background:linear-gradient(90deg,rgba(140,220,255,.5) 1px,transparent 1px) 0 0/72px 100%,
+            linear-gradient(180deg,rgba(140,220,255,.5) 1px,transparent 1px) 0 0/100% 72px}
+.rjg-coin{position:absolute;width:22px;height:22px;border:2px solid rgba(140,220,255,.5);
+ pointer-events:none}
+.rjg-coin.tl{left:12px;top:12px;border-right:0;border-bottom:0}
+.rjg-coin.tr{right:12px;top:12px;border-left:0;border-bottom:0}
+.rjg-coin.bl{left:12px;bottom:12px;border-right:0;border-top:0}
+.rjg-coin.br{right:12px;bottom:12px;border-left:0;border-top:0}
+.rjg-marker{position:absolute;pointer-events:none;display:none;
+ transition:left .08s linear,top .08s linear,width .12s linear,height .12s linear}
+.rjg-marker i{position:absolute;width:14px;height:14px;border:2px solid rgba(140,220,255,.9);
+ filter:drop-shadow(0 0 8px rgba(120,220,255,.7))}
+.rjg-marker i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0}
+.rjg-marker i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0}
+.rjg-marker i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0}
+.rjg-marker i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0}
+.rjg-halo{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;
+ border-radius:50%;border:1px solid rgba(20,214,196,.55);
+ box-shadow:0 0 16px rgba(20,214,196,.32) inset,0 0 14px rgba(20,214,196,.24);
+ animation:rjgpulse 2.2s ease-in-out infinite}
+@keyframes rjgpulse{0%,100%{transform:scale(.9);opacity:.55}50%{transform:scale(1.1);opacity:1}}
+.rjg-etiq{position:absolute;left:calc(100% + 10px);top:-4px;white-space:nowrap;
+ background:rgba(8,12,22,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+ border:1px solid rgba(255,255,255,.16);border-left:2px solid #14D6C4;border-radius:8px;
+ padding:6px 11px;font-size:clamp(10px,1.1vw,14px);letter-spacing:.15em;text-transform:uppercase;
+ color:#CFE4FF}
+.rjg-etiq b{display:block;font-size:clamp(18px,2.2vw,32px);font-weight:200;line-height:1.05;
+ letter-spacing:-.03em;color:#fff;text-shadow:0 0 10px rgba(255,255,255,.28),
+ 0 0 28px rgba(140,220,255,.4);font-variant-numeric:tabular-nums;text-transform:none}
+.rjg-inst{position:absolute;top:14px;left:16px;font-size:clamp(9px,1vw,13px);letter-spacing:.22em;
+ text-transform:uppercase;color:#F97316;border:1px solid rgba(249,115,22,.5);border-radius:99px;
+ padding:3px 10px;pointer-events:none;z-index:3}
+.rjg-plein{position:absolute;top:12px;right:14px;z-index:6;background:rgba(8,12,22,.5);
+ backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.18);
+ color:#CFE4FF;border-radius:9px;padding:5px 10px;font-size:11px;letter-spacing:.1em;
+ text-transform:uppercase;cursor:pointer;font-family:inherit}
+.rjg-plein:hover{border-color:rgba(20,214,196,.7);color:#fff}
+.rjg-scene.plein{position:fixed;inset:0;z-index:99999;border-radius:0;display:flex;
+ align-items:center;justify-content:center;background:#04060C}
+.rjg-scene.plein video{max-height:100vh;max-width:100vw;width:auto;height:100vh}
+.rjg-scene:fullscreen{display:flex;align-items:center;justify-content:center;background:#04060C}
+.rjg-scene:fullscreen video{max-height:100vh;width:auto;height:100vh}
+.rjg-hud{position:absolute;left:0;right:0;bottom:0;padding:12px 14px 14px;display:flex;
+ gap:8px;flex-wrap:wrap;align-items:flex-end;pointer-events:none;z-index:3}
+.rjg-card{flex:1 1 130px;min-width:118px;border-radius:12px;padding:9px 12px 11px;
+ background:rgba(8,12,22,.44);backdrop-filter:blur(12px) saturate(140%);
+ -webkit-backdrop-filter:blur(12px) saturate(140%);border:1px solid rgba(255,255,255,.14);
+ border-top:2px solid #14D6C4}
+.rjg-lab{font-size:clamp(10px,1.1vw,15px);letter-spacing:.18em;text-transform:uppercase;
+ color:#B6C8E4;font-weight:500;margin:0}
+.rjg-val{font-size:clamp(24px,3.6vw,52px);font-weight:200;letter-spacing:-.04em;color:#fff;
+ line-height:1;font-variant-numeric:tabular-nums;margin:3px 0 0}
+.rjg-val small{font-size:clamp(10px,1vw,15px);color:#9BB0D0;margin-left:4px;letter-spacing:0}
 </style>
-<div id="rjb-wrap" style="background:#07070C;border-radius:14px;overflow:hidden;
-            font-family:'Inter Tight',system-ui,-apple-system,'Segoe UI',sans-serif;
-            box-shadow:0 18px 50px rgba(0,0,0,.45)">
-  <video id="rjb-v" src="data:video/mp4;base64,{b64}" controls playsinline
-         preload="metadata"
-         style="width:100%;display:block;background:#000;max-height:{video_max}px;
-                object-fit:contain"></video>
-  <div style="padding:12px 16px 18px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;
-                color:#a8b3c7;font-size:12.5px;margin-bottom:8px">
-      <span>{titre}</span>
-      <span id="rjb-val" style="color:#14D6C4;font-weight:600;font-size:15px;
-            font-variant-numeric:tabular-nums"></span>
-    </div>
-    <div id="rjb-cwrap" style="position:relative;width:100%;height:{hauteur_courbe}px;
-                cursor:pointer;border-radius:8px;overflow:hidden;touch-action:none">
-      <canvas id="rjb-c" style="width:100%;height:100%;display:block"></canvas>
-    </div>
-    <div style="display:flex;justify-content:space-between;margin-top:6px;
-                font-size:10.5px;color:#5C6270;letter-spacing:.01em">
-      <span id="rjb-t0">0:00</span>
-      <span style="opacity:.75">glissez sur la courbe pour parcourir la vidéo</span>
-      <span id="rjb-t1">0:00</span>
-    </div>
+<div class="rjg-scene" id="rjgs">
+  <video id="rjgv" src="data:video/mp4;base64,__B64__" controls playsinline
+         preload="metadata"></video>
+  <div class="rjg-veil"></div><div class="rjg-scan"></div><div class="rjg-grille"></div>
+  <span class="rjg-coin tl"></span><span class="rjg-coin tr"></span>
+  <span class="rjg-coin bl"></span><span class="rjg-coin br"></span>
+  <div class="rjg-marker" id="rjgm">
+    <i></i><i></i><i></i><i></i>
+    <div class="rjg-halo"></div>
+    <div class="rjg-etiq"><span>__TITRE__</span><b id="rjgval">–</b></div>
   </div>
+  <div class="rjg-inst">LongeVis · __TITRE__</div>
+  <button class="rjg-plein" id="rjgplein" type="button">⛶ agrandir</button>
+  <div class="rjg-hud" id="rjghud"></div>
 </div>
 <script>
-(function() {{
-  const data = {data};
-  const v = document.getElementById('rjb-v');
-  const wrap = document.getElementById('rjb-cwrap');
-  const cv = document.getElementById('rjb-c');
-  const ctx = cv.getContext('2d');
-  const valEl = document.getElementById('rjb-val');
-  const n = data.t.length;
-  const tmax = data.t[n - 1] || data.duree || 1;
-  const vals = data.v.filter(x => x !== null);
-  const vmin = vals.length ? Math.min(...vals) : 0;
-  const vmax = vals.length ? Math.max(...vals) : 1;
-  const span = (vmax - vmin) || 1;
-  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+(function() {
+  var D = __DATA__;
+  var v = document.getElementById('rjgv');
+  var marker = document.getElementById('rjgm');
+  var valEl = document.getElementById('rjgval');
+  var hud = document.getElementById('rjghud');
+  var genre = D.genre;
 
-  function fmt(t) {{
-    t = Math.max(0, Math.round(t || 0));
-    const m = Math.floor(t / 60), s = t % 60;
-    return m + ':' + (s < 10 ? '0' : '') + s;
-  }}
-  document.getElementById('rjb-t1').textContent = fmt(tmax);
+  D.cartes.forEach(function(c, i) {
+    var d = document.createElement('div');
+    d.className = 'rjg-card';
+    d.innerHTML = '<p class="rjg-lab">' + c.nom + '</p>' +
+                  '<p class="rjg-val"><span id="rjgc' + i + '">0</span>' +
+                  '<small>' + c.unite + '</small></p>';
+    hud.appendChild(d);
+  });
 
-  let W = 0, H = 0;
+  var monte = null;
+  function anime() {
+    var t0 = performance.now();
+    cancelAnimationFrame(monte);
+    (function pas() {
+      var k = Math.min(1, (performance.now() - t0) / 1600);
+      var e = 1 - Math.pow(1 - k, 3);
+      D.cartes.forEach(function(c, i) {
+        var el = document.getElementById('rjgc' + i);
+        if (el) el.textContent = (c.val * e).toFixed(c.dec);
+      });
+      if (k < 1) monte = requestAnimationFrame(pas);
+    })();
+  }
 
-  function xAt(i) {{ return (data.t[i] / tmax) * (W - 8) + 4; }}
-  function yAt(val) {{ return H - 8 - ((val - vmin) / span) * (H - 16); }}
+  function poser(p) {
+    if (!marker) return;
+    if (!p || p.x === undefined) { marker.style.display = 'none'; return; }
+    marker.style.display = 'block';
+    var y = (p.y === undefined ? 0.5 : p.y);
+    var h = (genre === 'extent') ? Math.max(0.05, p.h || 0.3) : 0.10;
+    var w = 0.09;
+    marker.style.left = (100 * (p.x - w / 2)).toFixed(2) + '%';
+    marker.style.top = (100 * (y - h / 2)).toFixed(2) + '%';
+    marker.style.width = (100 * w).toFixed(2) + '%';
+    marker.style.height = (100 * h).toFixed(2) + '%';
+    var vmax = D.vmax, vmin = D.vmin;
+    var frac = (vmax > vmin && p.v !== null) ? (p.v - vmin) / (vmax - vmin) : 0.5;
+    frac = Math.max(0, Math.min(1, frac));
+    var teinte = frac < 0.33 ? '122,162,255' : (frac < 0.66 ? '20,214,196' : '249,115,22');
+    var eq = marker.querySelectorAll('i');
+    for (var q = 0; q < eq.length; q++) eq[q].style.borderColor = 'rgba(' + teinte + ',.95)';
+    var halo = marker.querySelector('.rjg-halo');
+    if (halo) {
+      halo.style.borderColor = 'rgba(' + teinte + ',.6)';
+      halo.style.boxShadow = '0 0 16px rgba(' + teinte + ',.32) inset,0 0 14px rgba(' + teinte + ',.26)';
+    }
+    if (valEl) valEl.textContent = (p.v === null || p.v === undefined) ? '' : (p.v.toFixed(1) + ' ' + D.unite);
+  }
 
-  function resize() {{
-    const rect = wrap.getBoundingClientRect();
-    W = Math.max(40, Math.round(rect.width));
-    H = Math.max(30, Math.round(rect.height));
-    cv.width = Math.round(W * dpr);
-    cv.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    draw();
-  }}
+  function suit() {
+    var t = v.currentTime, s = D.serie;
+    if (!s.length) return;
+    var i = Math.min(s.length - 1, Math.max(0, Math.round(t * (s.length - 1) / Math.max(0.01, D.duree))));
+    poser(s[i]);
+  }
 
-  function draw() {{
-    ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = 'rgba(168,179,199,0.16)';
-    ctx.lineWidth = 1;
-    for (let g = 0; g <= 2; g++) {{
-      const y = 8 + g * (H - 16) / 2;
-      ctx.beginPath(); ctx.moveTo(4, y); ctx.lineTo(W - 4, y); ctx.stroke();
-    }}
-    ctx.strokeStyle = '#14D6C4';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    let started = false;
-    for (let i = 0; i < n; i++) {{
-      if (data.v[i] === null) {{ started = false; continue; }}
-      const x = xAt(i), y = yAt(data.v[i]);
-      if (!started) {{ ctx.moveTo(x, y); started = true; }} else {{ ctx.lineTo(x, y); }}
-    }}
-    ctx.stroke();
+  v.addEventListener('play', anime);
+  v.addEventListener('timeupdate', suit);
+  v.addEventListener('seeking', suit);
+  v.addEventListener('loadeddata', function() { anime(); suit(); });
 
-    const frac = Math.min(1, Math.max(0, (v.currentTime || 0) / tmax));
-    const px = frac * (W - 8) + 4;
-    ctx.strokeStyle = '#ff8a3d';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(px, 2); ctx.lineTo(px, H - 2); ctx.stroke();
-    ctx.fillStyle = '#ff8a3d';
-    ctx.beginPath(); ctx.arc(px, 6, 3, 0, Math.PI * 2); ctx.fill();
-
-    let closest = 0, bestD = Infinity;
-    for (let i = 0; i < n; i++) {{
-      const d = Math.abs(data.t[i] - v.currentTime);
-      if (d < bestD) {{ bestD = d; closest = i; }}
-    }}
-    valEl.textContent = data.v[closest] !== null
-      ? data.v[closest].toFixed(2) + ' ' + data.unite : '';
-    document.getElementById('rjb-t0').textContent = fmt(v.currentTime || 0);
-  }}
-
-  function seekAt(clientX) {{
-    const rect = wrap.getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (clientX - rect.left - 4) / Math.max(1, rect.width - 8)));
-    const t = frac * tmax;
-    if (isFinite(t)) {{
-      try {{ v.currentTime = t; }} catch (e) {{}}
-      draw();
-    }}
-  }}
-
-  let glisse = false;
-  wrap.addEventListener('pointerdown', function(e) {{
-    glisse = true;
-    try {{ wrap.setPointerCapture(e.pointerId); }} catch (e) {{}}
-    v.pause();
-    seekAt(e.clientX);
-  }});
-  wrap.addEventListener('pointermove', function(e) {{ if (glisse) seekAt(e.clientX); }});
-  wrap.addEventListener('pointerup', function() {{ glisse = false; }});
-  wrap.addEventListener('pointercancel', function() {{ glisse = false; }});
-
-  if (window.ResizeObserver) {{
-    new ResizeObserver(resize).observe(wrap);
-  }} else {{
-    window.addEventListener('resize', resize);
-  }}
-
-  v.addEventListener('timeupdate', draw);
-  v.addEventListener('loadedmetadata', resize);
-  v.addEventListener('seeking', draw);
-  resize();
-}})();
+  var scene = document.getElementById('rjgs');
+  var btn = document.getElementById('rjgplein');
+  function bascule() {
+    var plein = scene.classList.contains('plein') || document.fullscreenElement;
+    if (plein) {
+      if (document.exitFullscreen && document.fullscreenElement) document.exitFullscreen();
+      scene.classList.remove('plein');
+      btn.textContent = '⛶ agrandir';
+    } else {
+      try {
+        if (scene.requestFullscreen) scene.requestFullscreen().catch(function() {
+          scene.classList.add('plein');
+        });
+        else scene.classList.add('plein');
+      } catch (e) { scene.classList.add('plein'); }
+      scene.classList.add('plein');
+      btn.textContent = '⛶ réduire';
+    }
+  }
+  if (btn) btn.addEventListener('click', bascule);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      scene.classList.remove('plein');
+      if (btn) btn.textContent = '⛶ agrandir';
+    }
+  });
+})();
 </script>
 """

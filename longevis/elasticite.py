@@ -48,4 +48,5 @@ def analyze_elasticite(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[
     # `pipeline._analyze_geste` avec les autres tests complémentaires.
     f = amplitude(b.height_px, b.valid, b.fps)
     return {"task": "elasticite", "features": f, "segments": {},
-            "signals": {"height_px": b.height_px, "fps": b.fps}}
+            "signals": {"height_px": b.height_px, "cx": b.centroid[:, 0],
+                        "cy": b.centroid[:, 1], "fps": b.fps}}

@@ -821,6 +821,7 @@ TESTS_GESTES = [
          ("Levers détectés", f.get("sts_count"), "", 0),
          ("Durée moyenne", f.get("sts_mean_dur_s"), " s", 1),
          ("Vitesse de lever", f.get("sts_rise_speed"), " stature/s", 2),
+         ("Oscillation résiduelle après le lever", f.get("ispt_residuel_mm_s"), " mm/s", 0),
      ],
      "signal_cle": "height", "signal_titre": "Hauteur de la silhouette", "signal_unite": "px"},
     {"cle": "mouvement", "titre": "Mouvement libre",

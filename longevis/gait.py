@@ -378,21 +378,27 @@ def postural_sway(cx: np.ndarray, cy: np.ndarray, fps: float,
 # --------------------------------------------------------------------------- #
 # Transferts assis-debout
 # --------------------------------------------------------------------------- #
-def sit_to_stand(height_px: np.ndarray, fps: float) -> Dict[str, float]:
-    """Transferts détectés sur la hauteur de silhouette."""
+def sit_to_stand(height_px: np.ndarray, fps: float
+                 ) -> Tuple[Dict[str, float], List[Tuple[int, int]]]:
+    """Transferts détectés sur la hauteur de silhouette.
+
+    Retourne aussi les bornes (début, fin) de chaque lever détecté, en plus
+    des statistiques agrégées : elles servent à isoler la fenêtre
+    post-transfert pour `composites.stabilite_post_transfert` (l'ISPT), sans
+    dupliquer la détection."""
+    vide: Dict[str, float] = {"sts_count": 0.0, "sts_mean_dur_s": float("nan"),
+                              "sts_rise_speed": float("nan")}
     h = _smooth(dsp.interp_nan(height_px), fps, 2.0)
     if len(h) < int(3 * fps):
-        return {"sts_count": 0.0, "sts_mean_dur_s": float("nan"),
-                "sts_rise_speed": float("nan")}
+        return vide, []
     rng = np.percentile(h, 95) - np.percentile(h, 5)
     if rng < 0.18 * np.median(h):                  # amplitude insuffisante
-        return {"sts_count": 0.0, "sts_mean_dur_s": float("nan"),
-                "sts_rise_speed": float("nan")}
+        return vide, []
     lo, hi = np.percentile(h, 10), np.percentile(h, 90)
     state = h > (lo + hi) / 2
     trans = np.nonzero(np.diff(state.astype(int)) != 0)[0]
     rises = [t for t in trans if state[t + 1]]
-    durs = []
+    durs, bounds = [], []
     for t in rises:
         a = t
         while a > 0 and h[a] > lo + 0.1 * (hi - lo):
@@ -402,11 +408,13 @@ def sit_to_stand(height_px: np.ndarray, fps: float) -> Dict[str, float]:
             b += 1
         if 0.2 < (b - a) / fps < 6.0:
             durs.append((b - a) / fps)
-    return {
+            bounds.append((a, b))
+    feats = {
         "sts_count": float(len(durs)),
         "sts_mean_dur_s": float(np.mean(durs)) if durs else float("nan"),
         "sts_rise_speed": float(rng / np.mean(durs) / np.median(h)) if durs else float("nan"),
     }
+    return feats, bounds
 
 
 # --------------------------------------------------------------------------- #
@@ -541,6 +549,8 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
         "camera_motion_px": b.camera_motion_px,
     }
 
+    rises_idx: List[Tuple[int, int]] = []
+
     passes, turns = segment_passes(cx, fps, med_h)
     feats["n_passes"] = float(len(passes))
     feats["n_turns"] = float(len(turns))
@@ -644,9 +654,11 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
         feats.update(mouvement_libre(cx, cy, spread, hh, fps, med_h))
 
     elif task == "leve":
-        feats.update(sit_to_stand(hh, fps))
+        sts_feats, rises_idx = sit_to_stand(hh, fps)
+        feats.update(sts_feats)
         feats["sts_sparc"] = sparc(np.abs(np.gradient(hh) * fps), fps)
         feats["sts_jerk_norm"] = normalized_jerk(hh, fps)
+        feats.update(composites.stabilite_post_transfert(cx, cy, fps, rises_idx, scale))
 
     else:                                            # posture
         # Le suivi de torse est préféré au centroïde de silhouette : la
@@ -675,5 +687,5 @@ def analyze_motion(b: BodyTraces, task: str = "auto",
     feats.update(composites.composite_indices(feats, sig, passes, turns))
 
     return {"task": task, "features": feats,
-            "segments": {"passes": passes, "turns": turns},
+            "segments": {"passes": passes, "turns": turns, "rises": rises_idx},
             "signals": sig}

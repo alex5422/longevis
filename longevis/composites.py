@@ -196,6 +196,75 @@ def _lowpass(x: np.ndarray, fps: float, fc: float) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------- #
+# 5. ISPT — Indice de Stabilité Post-Transfert
+# --------------------------------------------------------------------------- #
+def stabilite_post_transfert(cx: np.ndarray, cy: np.ndarray, fps: float,
+                             rises: List[Tuple[int, int]],
+                             px_per_m: Optional[float] = None,
+                             delai_s: float = 0.3, duree_s: float = 2.2
+                             ) -> Dict[str, float]:
+    """ISPT — instabilité posturale résiduelle après un transfert assis-debout.
+
+    Le lever de chaise est lui-même une perturbation posturale auto-infligée :
+    le passage du siège à l'appui bipodal déséquilibre tout le monde un peu,
+    y compris un sujet en pleine forme. Ce qui distingue une bonne réserve
+    d'équilibre d'une réserve entamée, ce n'est pas ce déséquilibre initial —
+    universel — mais la vitesse à laquelle il se résorbe. C'est le même
+    principe que le temps de récupération étudié après une perturbation
+    posturale provoquée en laboratoire, mais ici sans rien ajouter au
+    protocole : le lever de chaise déjà filmé pour compter les transferts
+    EST la perturbation, et sa propre vidéo contient déjà la récupération.
+
+    L'indice isole une fenêtre qui commence `delai_s` après que la silhouette
+    a atteint sa hauteur debout (le temps que le premier à-coup s'amortisse)
+    et mesure le trajet du centre de masse qui subsiste pendant les
+    `duree_s` secondes suivantes, une fois que le sujet est censé être
+    stabilisé. Une valeur élevée dit : l'équilibre n'est pas encore acquis
+    alors que le corps a fini de se redresser.
+
+    Statut : hypothèse de recherche, comme les indices ci-dessus — la fenêtre
+    (0,3 s puis 2,2 s) est choisie par raisonnement physiologique, pas
+    calibrée sur cohorte. Contrairement à IRD/SCF/ICR, ce n'est pas un
+    rapport sans dimension : il n'y a pas de dénominateur naturel pour un
+    résidu de balancement (en forcer un serait arbitraire), donc la valeur
+    reste en pixels/seconde — en mm/s si une échelle est fournie — et se lit
+    en suivi longitudinal chez un même sujet, pas en comparaison absolue
+    entre personnes.
+    """
+    out: Dict[str, float] = {"ispt_residuel_px_s": float("nan"), "ispt_n_leves": 0.0}
+    if px_per_m:
+        out["ispt_residuel_mm_s"] = float("nan")
+    if not rises or not np.isfinite(fps) or fps <= 0:
+        return out
+
+    n = int(min(len(cx), len(cy)))
+    fc = min(3.0, fps / 2 - 0.5)
+    if fc <= 0.05:
+        return out
+
+    vals: List[float] = []
+    for (_, b) in rises:
+        i0 = int(b + delai_s * fps)
+        i1 = min(n, i0 + int(duree_s * fps))
+        if i0 >= n or i1 - i0 < int(0.8 * fps):
+            continue
+        x = dsp.detrend_smoothness(cx[i0:i1], lam=300.0)
+        y = dsp.detrend_smoothness(cy[i0:i1], lam=300.0)
+        x = dsp.bandpass(x, fps, 0.05, fc, order=2)
+        y = dsp.bandpass(y, fps, 0.05, fc, order=2)
+        path = float(np.sum(np.hypot(np.diff(x), np.diff(y))) / (len(x) / fps))
+        if np.isfinite(path):
+            vals.append(path)
+
+    if vals:
+        out["ispt_residuel_px_s"] = float(np.median(vals))
+        out["ispt_n_leves"] = float(len(vals))
+        if px_per_m:
+            out["ispt_residuel_mm_s"] = float(out["ispt_residuel_px_s"] / px_per_m * 1000.0)
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Assemblage
 # --------------------------------------------------------------------------- #
 def composite_indices(features: Dict[str, float],

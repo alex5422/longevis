@@ -922,7 +922,17 @@ for _test, _onglet in zip(TESTS_GESTES, _onglets_gestes):
             if _vue == "Vidéo":
                 if chemin_geste and os.path.exists(chemin_geste):
                     st.video(chemin_geste)
-            elif rejeu_beta is not None and _cles_dispo:
+            elif rejeu_beta is None:
+                st.markdown('<p class="iv-cap">Le module de rejeu incrusté n\'est '
+                            'pas disponible sur ce déploiement. Les mesures '
+                            'ci-dessus restent valables.</p>', unsafe_allow_html=True)
+            elif not _cles_dispo:
+                st.markdown('<p class="iv-cap">Aucune position n\'a pu être suivie '
+                            'sur cette vidéo pour ce geste — l\'incrustation ne peut '
+                            'pas être construite. Vérifiez que le sujet entier est '
+                            'visible et que la caméra ne bouge pas. Les mesures '
+                            'ci-dessus restent valables.</p>', unsafe_allow_html=True)
+            else:
                 _choix = st.selectbox(
                     "Mesure à superposer sur la vidéo", _cles_dispo,
                     index=_cles_dispo.index(_defaut) if _defaut in _cles_dispo else 0,
@@ -941,9 +951,9 @@ for _test, _onglet in zip(TESTS_GESTES, _onglets_gestes):
                                     height=rejeu_beta.hauteur_composant_geste(_facteur_g),
                                     scrolling=False)
                 else:
-                    st.markdown('<p class="iv-cap">Vidéo trop lourde pour le rejeu '
-                                '(28 Mo maximum). Les mesures restent complètes.</p>',
-                                unsafe_allow_html=True)
+                    st.markdown('<p class="iv-cap">L\'incrustation n\'a pas pu être '
+                                'générée pour cette vidéo. Les mesures restent '
+                                'complètes.</p>', unsafe_allow_html=True)
 
 st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
            unsafe_allow_html=True)

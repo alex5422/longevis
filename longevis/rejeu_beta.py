@@ -13,9 +13,11 @@ taille de l'image — pas sur une position arbitraire déduite du graphique.
 """
 
 from __future__ import annotations
+import base64
 import json
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
+import cv2
 import numpy as np
 
 from .hologramme import video_base64
@@ -95,6 +97,39 @@ def _serie_geste(signaux: Dict[str, object], signal_cle: str, fps: float,
     return sortie, genre
 
 
+def _frames_base64(chemin: str, n: int = 14, largeur: int = 440) -> Optional[List[str]]:
+    """Secours quand la vidéo dépasse `hologramme.MAX_MO` : échantillonne
+    `n` images réduites au lieu d'abandonner l'incrustation.
+
+    Les six gestes partagent une seule vidéo, filmée d'affilée — bien plus
+    longue qu'un unique test de marche, elle dépasse vite le plafond
+    d'encodage. Un ré-encodage vidéo côté serveur réglerait la taille, mais
+    aucun hébergement gratuit ne garantit ffmpeg (voir `hologramme.py`) ; ces
+    quelques images fixes, elles, ne dépendent que d'OpenCV, déjà utilisé
+    partout ailleurs dans le pipeline."""
+    cap = cv2.VideoCapture(chemin)
+    if not cap.isOpened():
+        return None
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    if total <= 0:
+        cap.release()
+        return None
+    images: List[str] = []
+    for idx in np.linspace(0, total - 1, num=min(n, total), dtype=int):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        h, w = frame.shape[:2]
+        if w > largeur:
+            frame = cv2.resize(frame, (largeur, max(1, int(h * largeur / w))))
+        ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 62])
+        if ok2:
+            images.append(base64.b64encode(buf).decode("ascii"))
+    cap.release()
+    return images or None
+
+
 def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object],
                 signal_cle: str, titre: str, unite: str,
                 metriques: Sequence[tuple], facteur: float = 1.0) -> Optional[str]:
@@ -103,9 +138,15 @@ def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object]
 
     `metriques` : liste de tuples (nom, valeur, unité, décimales) — les
     mêmes que celles déjà affichées en cartes statiques au-dessus, réutilisées
-    ici pour l'incrustation animée."""
+    ici pour l'incrustation animée.
+
+    Vidéo dans la limite d'`hologramme.MAX_MO` : rejeu vidéo complet, comme
+    pour la marche. Au-delà (attendu ici, une seule vidéo couvrant les six
+    gestes est bien plus longue qu'un test de marche), rejeu par images clés
+    échantillonnées — l'incrustation reste disponible plutôt que d'échouer."""
     b64 = video_base64(chemin)
-    if b64 is None:
+    frames = None if b64 is not None else _frames_base64(chemin)
+    if b64 is None and frames is None:
         return None
 
     fps = float(signaux.get("fps") or 25.0)
@@ -125,12 +166,14 @@ def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object]
             cartes.append({"nom": nom, "val": round(float(val), dec),
                            "unite": u, "dec": dec})
 
-    donnees = json.dumps({"serie": serie, "genre": genre, "unite": unite,
+    donnees = json.dumps({"support": "video" if b64 is not None else "frames",
+                          "serie": serie, "genre": genre, "unite": unite,
                           "vmin": round(float(vmin), 3), "vmax": round(float(vmax), 3),
-                          "cartes": cartes, "duree": round(duree, 2)})
+                          "cartes": cartes, "duree": round(duree, 2),
+                          "frames": frames or []})
 
     video_max = int(480 * facteur)
-    return (_GABARIT_GESTE.replace("__B64__", b64).replace("__DATA__", donnees)
+    return (_GABARIT_GESTE.replace("__B64__", b64 or "").replace("__DATA__", donnees)
             .replace("__TITRE__", titre).replace("__VMAX__", str(video_max)))
 
 
@@ -141,7 +184,7 @@ html,body{margin:0;padding:0;background:transparent}
 .rjg-scene{position:relative;border-radius:18px;overflow:hidden;background:#07070C;
  font-family:'Inter Tight',-apple-system,'Segoe UI',sans-serif;
  box-shadow:0 20px 60px rgba(0,0,0,.5)}
-.rjg-scene video{display:block;width:100%;filter:saturate(.85) contrast(1.05);
+.rjg-scene video,.rjg-scene img{display:block;width:100%;filter:saturate(.85) contrast(1.05);
  background:#000;max-height:__VMAX__px;object-fit:contain}
 .rjg-veil{position:absolute;inset:0;pointer-events:none;
  background:radial-gradient(120% 90% at 50% 40%,transparent 35%,rgba(4,6,14,.68) 100%)}
@@ -187,9 +230,9 @@ html,body{margin:0;padding:0;background:transparent}
 .rjg-plein:hover{border-color:rgba(20,214,196,.7);color:#fff}
 .rjg-scene.plein{position:fixed;inset:0;z-index:99999;border-radius:0;display:flex;
  align-items:center;justify-content:center;background:#04060C}
-.rjg-scene.plein video{max-height:100vh;max-width:100vw;width:auto;height:100vh}
+.rjg-scene.plein video,.rjg-scene.plein img{max-height:100vh;max-width:100vw;width:auto;height:100vh}
 .rjg-scene:fullscreen{display:flex;align-items:center;justify-content:center;background:#04060C}
-.rjg-scene:fullscreen video{max-height:100vh;width:auto;height:100vh}
+.rjg-scene:fullscreen video,.rjg-scene:fullscreen img{max-height:100vh;width:auto;height:100vh}
 .rjg-hud{position:absolute;left:0;right:0;bottom:0;padding:12px 14px 14px;display:flex;
  gap:8px;flex-wrap:wrap;align-items:flex-end;pointer-events:none;z-index:3}
 .rjg-card{flex:1 1 130px;min-width:118px;border-radius:12px;padding:9px 12px 11px;
@@ -205,6 +248,7 @@ html,body{margin:0;padding:0;background:transparent}
 <div class="rjg-scene" id="rjgs">
   <video id="rjgv" src="data:video/mp4;base64,__B64__" controls playsinline
          preload="metadata"></video>
+  <img id="rjgimg" style="display:none" alt="__TITRE__">
   <div class="rjg-veil"></div><div class="rjg-scan"></div><div class="rjg-grille"></div>
   <span class="rjg-coin tl"></span><span class="rjg-coin tr"></span>
   <span class="rjg-coin bl"></span><span class="rjg-coin br"></span>
@@ -221,6 +265,7 @@ html,body{margin:0;padding:0;background:transparent}
 (function() {
   var D = __DATA__;
   var v = document.getElementById('rjgv');
+  var img = document.getElementById('rjgimg');
   var marker = document.getElementById('rjgm');
   var valEl = document.getElementById('rjgval');
   var hud = document.getElementById('rjghud');
@@ -282,10 +327,37 @@ html,body{margin:0;padding:0;background:transparent}
     poser(s[i]);
   }
 
-  v.addEventListener('play', anime);
-  v.addEventListener('timeupdate', suit);
-  v.addEventListener('seeking', suit);
-  v.addEventListener('loadeddata', function() { anime(); suit(); });
+  if (D.support === 'frames' && D.frames && D.frames.length) {
+    // Vidéo trop lourde pour être incrustée telle quelle (voir _frames_base64) :
+    // un aperçu par images clés remplace la lecture vidéo, mais le repère et
+    // les cartes suivent le même chemin que pour un rejeu vidéo complet.
+    v.style.display = 'none';
+    img.style.display = 'block';
+    var trames = D.frames, nT = trames.length;
+    var s = D.serie;
+    img.src = 'data:image/jpeg;base64,' + trames[0];
+    var inst = document.querySelector('.rjg-inst');
+    if (inst) inst.textContent += ' · aperçu par images clés';
+    var depart = null;
+    var dureeMs = Math.max(1000, D.duree * 1000);
+    anime();
+    (function boucle(ts) {
+      if (depart === null) depart = ts;
+      var frac = ((ts - depart) % dureeMs) / dureeMs;
+      var fi = Math.min(nT - 1, Math.floor(frac * nT));
+      img.src = 'data:image/jpeg;base64,' + trames[fi];
+      if (s.length) {
+        var i = Math.min(s.length - 1, Math.max(0, Math.round(frac * (s.length - 1))));
+        poser(s[i]);
+      }
+      requestAnimationFrame(boucle);
+    })();
+  } else {
+    v.addEventListener('play', anime);
+    v.addEventListener('timeupdate', suit);
+    v.addEventListener('seeking', suit);
+    v.addEventListener('loadeddata', function() { anime(); suit(); });
+  }
 
   var scene = document.getElementById('rjgs');
   var btn = document.getElementById('rjgplein');

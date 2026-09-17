@@ -265,7 +265,7 @@ html,body{margin:0;padding:0;background:transparent}
     <div class="rjg-halo"></div>
     <div class="rjg-etiq"><span>__TITRE__</span><b id="rjgval">–</b></div>
   </div>
-  <div class="rjg-inst">LongeVis · __TITRE__</div>
+  <div class="rjg-inst">VitalScope · __TITRE__</div>
   <button class="rjg-plein" id="rjgplein" type="button">⛶ agrandir</button>
   <div class="rjg-hud" id="rjghud"></div>
 </div>

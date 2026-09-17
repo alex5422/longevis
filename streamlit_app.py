@@ -44,7 +44,7 @@ import streamlit.components.v1 as components
 from longevis.config import METHOD_NOISE_FLOOR, REFERENCE_NORMS
 from longevis.report import LABELS, UNITS
 
-st.set_page_config(page_title="LongeVis", page_icon="◗", layout="wide",
+st.set_page_config(page_title="VitalScope", page_icon="◗", layout="wide",
                    initial_sidebar_state="expanded")
 
 STYLE = """
@@ -380,7 +380,7 @@ def scene_analyse(cx, spread, fps, passes, turns):
 
 st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality</span>'
             '<span class="iv-tag"><i></i>Analyse vidéo</span>'
-            '<h1 class="iv-title">LongeVis</h1>'
+            '<h1 class="iv-title">VitalScope</h1>'
             '<p class="iv-lede">Sept gestes filmés au téléphone suffisent à mesurer '
             'la marche, l\'équilibre, la force et la mobilité qui comptent pour '
             'l\'autonomie — un onglet par geste, aucun matériel supplémentaire.</p>',

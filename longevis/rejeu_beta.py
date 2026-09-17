@@ -244,6 +244,12 @@ html,body{margin:0;padding:0;background:transparent}
 .rjg-val{font-size:clamp(24px,3.6vw,52px);font-weight:200;letter-spacing:-.04em;color:#fff;
  line-height:1;font-variant-numeric:tabular-nums;margin:3px 0 0}
 .rjg-val small{font-size:clamp(10px,1vw,15px);color:#9BB0D0;margin-left:4px;letter-spacing:0}
+.rjg-card--flag{position:relative;overflow:visible}
+.rjg-gauge{position:absolute;top:-15px;right:9px;width:32px;height:32px;pointer-events:none}
+.rjg-gauge circle{fill:none;stroke-width:3}
+.rjg-gauge .bg{stroke:rgba(255,255,255,.14)}
+.rjg-gauge .fg{stroke:#14D6C4;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;
+ filter:drop-shadow(0 0 5px rgba(20,214,196,.75))}
 </style>
 <div class="rjg-scene" id="rjgs">
   <video id="rjgv" src="data:video/mp4;base64,__B64__" controls playsinline
@@ -271,10 +277,26 @@ html,body{margin:0;padding:0;background:transparent}
   var hud = document.getElementById('rjghud');
   var genre = D.genre;
 
+  // Anneau qui se referme en même temps que le chiffre monte — pas un score,
+  // juste la mise en scène du chargement. Réservé à l'ISPT (nouvel indice,
+  // le seul de ce bandeau à combiner deux gestes) pour le distinguer
+  // visuellement sans lui prêter un sens clinique qu'il n'a pas : ni couleur
+  // de jugement, ni seuil — l'anneau se contente de suivre la même
+  // progression 0→1 que le chiffre juste à côté.
+  var CIRC_JAUGE = 2 * Math.PI * 13;
+
   D.cartes.forEach(function(c, i) {
     var d = document.createElement('div');
-    d.className = 'rjg-card';
-    d.innerHTML = '<p class="rjg-lab">' + c.nom + '</p>' +
+    var estPhare = (c.nom === 'Oscillation résiduelle après le lever');
+    d.className = 'rjg-card' + (estPhare ? ' rjg-card--flag' : '');
+    var jauge = estPhare ?
+      '<svg class="rjg-gauge" viewBox="0 0 32 32">' +
+        '<circle class="bg" cx="16" cy="16" r="13"></circle>' +
+        '<circle class="fg" id="rjgg' + i + '" cx="16" cy="16" r="13" ' +
+          'stroke-dasharray="' + CIRC_JAUGE.toFixed(1) + '" ' +
+          'stroke-dashoffset="' + CIRC_JAUGE.toFixed(1) + '"></circle>' +
+      '</svg>' : '';
+    d.innerHTML = jauge + '<p class="rjg-lab">' + c.nom + '</p>' +
                   '<p class="rjg-val"><span id="rjgc' + i + '">0</span>' +
                   '<small>' + c.unite + '</small></p>';
     hud.appendChild(d);
@@ -290,6 +312,8 @@ html,body{margin:0;padding:0;background:transparent}
       D.cartes.forEach(function(c, i) {
         var el = document.getElementById('rjgc' + i);
         if (el) el.textContent = (c.val * e).toFixed(c.dec);
+        var g = document.getElementById('rjgg' + i);
+        if (g) g.setAttribute('stroke-dashoffset', (CIRC_JAUGE * (1 - e)).toFixed(1));
       });
       if (k < 1) monte = requestAnimationFrame(pas);
     })();
@@ -341,7 +365,13 @@ html,body{margin:0;padding:0;background:transparent}
     var depart = null;
     var dureeMs = Math.max(1000, D.duree * 1000);
     anime();
-    (function boucle(ts) {
+    // Démarrée via requestAnimationFrame (pas un appel direct) : un appel
+    // immédiat de l'IIFE n'aurait pas de vrai timestamp à donner à `ts`, ce
+    // qui figeait `depart` à `undefined` dès la première image — chaque
+    // `frac` valait alors NaN pour toujours, et `trames[NaN]` est
+    // `undefined` : l'aperçu affichait une image puis restait figé sur du
+    // vide en silence, exactement le symptôme que ce repli est censé éviter.
+    requestAnimationFrame(function boucle(ts) {
       if (depart === null) depart = ts;
       var frac = ((ts - depart) % dureeMs) / dureeMs;
       var fi = Math.min(nT - 1, Math.floor(frac * nT));
@@ -351,7 +381,7 @@ html,body{margin:0;padding:0;background:transparent}
         poser(s[i]);
       }
       requestAnimationFrame(boucle);
-    })();
+    });
   } else {
     v.addEventListener('play', anime);
     v.addEventListener('timeupdate', suit);

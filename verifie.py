@@ -37,8 +37,8 @@ def t(nom, fn):
 # ─────────────────────────────────────────────────────────────────────────
 #  Traces de synthèse : une marche vue de profil, sans déplacement imposé
 # ─────────────────────────────────────────────────────────────────────────
-from longevis.body import BodyTraces                          # noqa: E402
-from longevis import gait, kinexa, hologramme, vue            # noqa: E402
+from vitalscope.body import BodyTraces                          # noqa: E402
+from vitalscope import gait, kinexa, hologramme, vue            # noqa: E402
 
 
 def traces(cadence=100., amp_pas_m=0.55, cv=3., duree=12., fps=30.,
@@ -134,7 +134,7 @@ t("la comparaison à la classe d'âge relève le score d'un sujet âgé", _compa
 
 
 def _icope_absent():
-    src = open(os.path.join("longevis", "kinexa.py"), encoding="utf-8").read()
+    src = open(os.path.join("vitalscope", "kinexa.py"), encoding="utf-8").read()
     assert "def icope" in src, "la fonction ICOPE a disparu"
     app = open("streamlit_app.py", encoding="utf-8").read()
     assert "ICOPE" not in app, "l'ICOPE est revenu dans la façade Longévité"

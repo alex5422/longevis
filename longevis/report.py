@@ -468,7 +468,7 @@ def render(result: Dict[str, object], out_path: str,
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rapport LongeVis — {html.escape(str(meta["file"]))}</title>
+<title>Rapport VitalScope — {html.escape(str(meta["file"]))}</title>
 <style>
 :root {{
   --paper:#FBF4F2; --paper-2:#FFFDFC; --grid:#F0CBC3; --grid-bold:#E0A196;
@@ -650,7 +650,7 @@ sur l'axe montre cet écart&#8239;: à gauche du trait central, en deçà de la 
 
 <section class="notice">
   <p style="margin-top:0"><strong>Ce rapport n'est pas un acte médical.</strong>
-  LongeVis est un outil de recherche et de bien-être. Il n'est ni un dispositif
+  VitalScope est un outil de recherche et de bien-être. Il n'est ni un dispositif
   médical au sens du règlement (UE) 2017/745, ni validé cliniquement, et ne
   permet ni de diagnostiquer, ni de prédire une espérance de vie.</p>
   <p>Les scores composites reposent sur des normes de population publiées et sur
@@ -664,7 +664,7 @@ sur l'axe montre cet écart&#8239;: à gauche du trait central, en deçà de la 
   légale explicite, une minimisation et une durée de conservation définie.</p>
 </section>
 
-<p class="foot">LongeVis v0.1 · rapport généré le {stamp} · méthode retenue&#8239;:
+<p class="foot">VitalScope v0.1 · rapport généré le {stamp} · méthode retenue&#8239;:
 {html.escape(str(meta["best_method"]))}</p>
 </main>
 </body>

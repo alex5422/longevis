@@ -18,10 +18,48 @@ import json
 import os
 from typing import Dict, List, Optional
 
+import cv2
 import numpy as np
 
 
 MAX_MO = 28.0          # au-delà, l'encodage en base64 alourdit trop la page
+
+# Conteneurs dont la structure binaire correspond à ce que la balise <video>
+# reçoit ici (mime figé sur "video/mp4" dans le gabarit) : MP4/M4V/MOV
+# partagent le même format de boîtes ISO-BMFF. Un .avi ou un .mkv accepté par
+# ailleurs (voir EXTENSIONS_VIDEO) est un format de conteneur entièrement
+# différent — même rempli d'H.264, il ne se lit pas comme un MP4.
+_EXT_CONTENEUR_SUR = {".mp4", ".m4v", ".mov"}
+
+# Codecs qu'un navigateur décode nativement dans une balise <video>. Beaucoup
+# de téléphones (tout iPhone récent, par défaut) filment en HEVC/H.265 plutôt
+# qu'en H.264 — aucun navigateur de bureau ne le décode en <video>.
+_FOURCC_LISIBLES_NAVIGATEUR = {"avc1", "h264", "x264", "avc3"}
+
+
+def _codec_lisible_navigateur(chemin: str) -> bool:
+    """True si OpenCV rapporte un codec H.264 pour ce fichier.
+
+    Un fichier qui échoue ce test (HEVC le plus souvent) n'est pas incompatible
+    au sens où l'incrustation planterait ou lèverait une erreur : la balise
+    <video> reste simplement à readyState 0 indéfiniment — un écran noir
+    silencieux, sans message, ce qui explique qu'un tel échec se voie et se
+    signale comme « l'incrustation ne montre rien » plutôt que comme un bug
+    identifiable. OpenCV, lui, décode ces fichiers sans problème (c'est ainsi
+    que les mesures du pipeline sont produites) : la différence n'est pas dans
+    la lisibilité du fichier, seulement dans ce qu'un navigateur sait rejouer."""
+    try:
+        cap = cv2.VideoCapture(chemin)
+        if not cap.isOpened():
+            return False
+        fourcc_int = int(cap.get(cv2.CAP_PROP_FOURCC))
+        cap.release()
+    except Exception:
+        return False
+    if fourcc_int <= 0:
+        return False
+    fourcc = "".join(chr((fourcc_int >> (8 * i)) & 0xFF) for i in range(4)).strip().lower()
+    return fourcc in _FOURCC_LISIBLES_NAVIGATEUR
 
 
 def _serie(sig: Dict[str, object], fps: float, duree: float,
@@ -71,10 +109,22 @@ def _serie(sig: Dict[str, object], fps: float, duree: float,
 
 
 def video_base64(chemin: str) -> Optional[str]:
-    """Encode la vidéo pour l'incruster dans la page, si elle n'est pas trop lourde."""
+    """Encode la vidéo pour l'incruster dans la page — si elle n'est pas trop
+    lourde ET si un navigateur peut effectivement la décoder.
+
+    Sans ce second filtre (ajouté après un signalement : l'incrustation
+    n'affichait rien, sans erreur), un fichier HEVC ou un conteneur .avi/.mkv
+    passait le test de taille puis produisait une balise <video> qui ne
+    s'anime jamais. Un retour à None ici déclenche le même repli que pour un
+    fichier trop lourd : les images clés de `rejeu_beta._frames_base64`, qui ne
+    dépendent que de la lecture OpenCV, pas de ce qu'un navigateur sait rejouer.
+    """
     try:
         mo = os.path.getsize(chemin) / 1e6
         if mo > MAX_MO:
+            return None
+        ext = os.path.splitext(chemin)[1].lower()
+        if ext not in _EXT_CONTENEUR_SUR or not _codec_lisible_navigateur(chemin):
             return None
         with open(chemin, "rb") as fh:
             return base64.b64encode(fh.read()).decode("ascii")

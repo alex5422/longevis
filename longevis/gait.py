@@ -340,7 +340,19 @@ def normalized_jerk(pos: np.ndarray, fps: float) -> float:
 # --------------------------------------------------------------------------- #
 def postural_sway(cx: np.ndarray, cy: np.ndarray, fps: float,
                   px_per_m: Optional[float]) -> Dict[str, float]:
-    """Oscillation posturale : dispersion, aire et vitesse du centre de masse."""
+    """Oscillation posturale : dispersion, aire et vitesse du centre de masse.
+
+    L'appui unipodal chronométré (ce que filme ce test) est l'un des gestes
+    d'évaluation les mieux corrélés à la survie dans la littérature sur le
+    vieillissement : chez des sujets de 51 à 75 ans, l'incapacité à tenir
+    10 secondes en appui sur une jambe était associée à une mortalité toutes
+    causes environ deux fois plus élevée dans la décennie suivante, y compris
+    après ajustement sur l'âge, le sexe et les comorbidités (Araujo et al.,
+    British Journal of Sports Medicine, 2022). Ce n'est pas une preuve de
+    causalité — tenir en équilibre ne prolonge pas la vie en soi, c'est un
+    marqueur qui reflète probablement l'état du système neuromusculaire et
+    vestibulaire — mais cela justifie de mesurer l'oscillation avec la même
+    rigueur que la marche plutôt qu'en test annexe."""
     # Bande large en bas du spectre : l'oscillation posturale contient une
     # composante très lente (dérive du centre de pression) qui compte autant
     # que les corrections rapides. Un passe-haut trop agressif l'effacerait.
@@ -385,7 +397,18 @@ def sit_to_stand(height_px: np.ndarray, fps: float
     Retourne aussi les bornes (début, fin) de chaque lever détecté, en plus
     des statistiques agrégées : elles servent à isoler la fenêtre
     post-transfert pour `composites.stabilite_post_transfert` (l'ISPT), sans
-    dupliquer la détection."""
+    dupliquer la détection.
+
+    Le lever de chaise répété est un des trois volets du Short Physical
+    Performance Battery (vitesse de marche, équilibre, lever de chaise) dont
+    l'étude fondatrice a établi qu'un score bas prédisait, chez des sujets de
+    71 ans et plus, la survenue d'un handicap, une entrée en institution et la
+    mortalité dans les quatre années suivantes (Guralnik et al., Journal of
+    Gerontology, 1994). `sts_rise_speed` ici n'est pas ce score composite —
+    c'est une vitesse de lever normalisée à la stature, pas un chronométrage
+    de répétitions — mais c'est la même idée déjà validée : ce geste banal en
+    dit long sur la réserve fonctionnelle, avant que la marche elle-même n'en
+    dise quoi que ce soit."""
     vide: Dict[str, float] = {"sts_count": 0.0, "sts_mean_dur_s": float("nan"),
                               "sts_rise_speed": float("nan")}
     h = _smooth(dsp.interp_nan(height_px), fps, 2.0)

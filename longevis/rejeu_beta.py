@@ -186,6 +186,8 @@ html,body{margin:0;padding:0;background:transparent}
  box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .rjg-scene video,.rjg-scene img{display:block;width:100%;filter:saturate(.85) contrast(1.05);
  background:#000;max-height:__VMAX__px;object-fit:contain}
+.rjg-scene img{transition:opacity .16s ease-out,filter .16s ease-out}
+.rjg-scene img.rjg-dissolve{opacity:.1;filter:saturate(1.4) contrast(1.15) brightness(1.3) blur(1.5px)}
 .rjg-veil{position:absolute;inset:0;pointer-events:none;
  background:radial-gradient(120% 90% at 50% 40%,transparent 35%,rgba(4,6,14,.68) 100%)}
 .rjg-scan{position:absolute;inset:0;pointer-events:none;opacity:.18;
@@ -365,6 +367,26 @@ html,body{margin:0;padding:0;background:transparent}
     var depart = null;
     var dureeMs = Math.max(1000, D.duree * 1000);
     anime();
+
+    // Fondu façon hologramme entre deux images clés, plutôt qu'une coupure
+    // franche : l'image en cours s'éclaircit et se brouille très brièvement
+    // (comme un mauvais signal qui se rétablit), puis la suivante apparaît
+    // et revient à la normale — cohérent avec le grain/scanlines déjà
+    // posés sur la scène, et ça masque le fait que ce ne sont que 14
+    // images fixes espacées dans le temps plutôt qu'un vrai flux vidéo.
+    var frameCourant = 0, jeton = 0;
+    function versImage(fi) {
+      if (fi === frameCourant) return;
+      frameCourant = fi;
+      var monJeton = ++jeton;
+      img.classList.add('rjg-dissolve');
+      setTimeout(function() {
+        if (monJeton !== jeton) return;  // une image plus récente a pris le dessus
+        img.src = 'data:image/jpeg;base64,' + trames[fi];
+        requestAnimationFrame(function() { img.classList.remove('rjg-dissolve'); });
+      }, 90);
+    }
+
     // Démarrée via requestAnimationFrame (pas un appel direct) : un appel
     // immédiat de l'IIFE n'aurait pas de vrai timestamp à donner à `ts`, ce
     // qui figeait `depart` à `undefined` dès la première image — chaque
@@ -375,7 +397,7 @@ html,body{margin:0;padding:0;background:transparent}
       if (depart === null) depart = ts;
       var frac = ((ts - depart) % dureeMs) / dureeMs;
       var fi = Math.min(nT - 1, Math.floor(frac * nT));
-      img.src = 'data:image/jpeg;base64,' + trames[fi];
+      versImage(fi);
       if (s.length) {
         var i = Math.min(s.length - 1, Math.max(0, Math.round(frac * (s.length - 1))));
         poser(s[i]);

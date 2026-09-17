@@ -1,8 +1,9 @@
 """Indices composites du mouvement.
 
-Trois indices construits par *combinaison* de mesures élémentaires, et non par
-moyenne pondérée. Chacun est un rapport entre deux grandeurs mesurées dans le
-même enregistrement, ce qui lui donne trois propriétés utiles :
+Quatre indices construits par *combinaison* de mesures élémentaires, et non par
+moyenne pondérée. Les trois premiers (IRD, SCF, ICR — le CAX est actuellement
+invalidé, voir plus bas) sont chacun un rapport entre deux grandeurs mesurées
+dans le même enregistrement, ce qui leur donne trois propriétés utiles :
 
   * **sans dimension** — aucune calibration d'échelle nécessaire, donc aucune
     dépendance à la stature déclarée ni à la distance de la caméra ;
@@ -11,12 +12,24 @@ même enregistrement, ce qui lui donne trois propriétés utiles :
   * **intra-sujet** — comparable d'un enregistrement à l'autre chez la même
     personne, ce qui est le cas d'usage réaliste d'un outil de suivi.
 
-Statut scientifique : ces trois indices sont des **hypothèses de recherche**.
-Ils combinent des grandeurs dont l'association au vieillissement est documentée,
-mais les indices eux-mêmes n'ont pas été validés sur cohorte humaine. Ce qui est
-mesuré ici, c'est leur plancher de bruit et leur réponse à une dégradation
-injectée — c'est-à-dire s'ils *peuvent* mesurer quelque chose, pas ce qu'ils
-mesurent chez un patient.
+Le cinquième, l'ISPT, combine deux signaux d'un geste différent (transfert
+assis-debout) et n'est pas un rapport sans dimension — voir sa docstring pour
+pourquoi. Son principe (la vitesse de récupération après une perturbation
+posturale, plutôt que le déséquilibre initial, sépare les profils à risque) et
+la faisabilité d'une mesure vidéo du centre de masse pendant ce geste
+s'appuient sur : Rabuffetti et al. (Gait & Posture, 2022) sur le temps de
+stabilisation après un transfert postural chez la personne âgée ; Kimura et
+al. (J. Phys. Ther. Sci., 2024) sur la décroissance du balancement après une
+perturbation volontaire ; Lee et al. (Gait & Posture, 2025) sur l'estimation
+vidéo du centre de masse pendant un lever de chaise. Les citations complètes
+sont dans la docstring de `stabilite_post_transfert`.
+
+Statut scientifique : ces cinq indices sont des **hypothèses de recherche**.
+Ils combinent des grandeurs dont l'association au vieillissement est documentée
+dans la littérature ci-dessus, mais les indices eux-mêmes n'ont pas été validés
+sur cohorte humaine. Ce qui est mesuré ici, c'est leur plancher de bruit et leur
+réponse à une dégradation injectée — c'est-à-dire s'ils *peuvent* mesurer
+quelque chose, pas ce qu'ils mesurent chez un patient.
 """
 
 from __future__ import annotations
@@ -209,11 +222,24 @@ def stabilite_post_transfert(cx: np.ndarray, cy: np.ndarray, fps: float,
     le passage du siège à l'appui bipodal déséquilibre tout le monde un peu,
     y compris un sujet en pleine forme. Ce qui distingue une bonne réserve
     d'équilibre d'une réserve entamée, ce n'est pas ce déséquilibre initial —
-    universel — mais la vitesse à laquelle il se résorbe. C'est le même
-    principe que le temps de récupération étudié après une perturbation
-    posturale provoquée en laboratoire, mais ici sans rien ajouter au
-    protocole : le lever de chaise déjà filmé pour compter les transferts
-    EST la perturbation, et sa propre vidéo contient déjà la récupération.
+    universel — mais la vitesse à laquelle il se résorbe : chez des sujets âgés,
+    ce temps de stabilisation après un transfert postural est plus du double
+    en institution que chez des sujets autonomes du même âge, à transfert
+    identique (Rabuffetti et al., Gait & Posture 2022) — c'est la vitesse de
+    récupération, pas le déséquilibre initial, qui sépare les deux groupes.
+    Kimura et al. (J. Phys. Ther. Sci. 2024) montrent le même écart sur une
+    perturbation volontaire (un pas descendant, plutôt qu'une chaise) : le
+    balancement résiduel décroît plus vite chez les sujets jeunes que chez les
+    âgés, avec un profil temporel mesurable seconde par seconde — c'est
+    exactement la décroissance que cette fenêtre cherche à capturer.
+
+    Sans rien ajouter au protocole : le lever de chaise déjà filmé pour compter
+    les transferts EST la perturbation, et sa propre vidéo contient déjà la
+    récupération. L'estimation du centre de masse par vidéo pendant un
+    transfert assis-debout, y compris depuis une caméra de smartphone, est
+    elle-même une approche déjà publiée (Lee et al., Gait & Posture 2025), ce
+    qui ancre la faisabilité de la mesure — pas la validité de l'indice
+    lui-même, qui reste à établir sur cohorte (voir Statut ci-dessous).
 
     L'indice isole une fenêtre qui commence `delai_s` après que la silhouette
     a atteint sa hauteur debout (le temps que le premier à-coup s'amortisse)

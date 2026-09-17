@@ -917,7 +917,7 @@ for _test, _onglet in zip(TESTS_GESTES, _onglets_gestes):
             if _defaut not in _cles_dispo and _cles_dispo:
                 _defaut = _cles_dispo[0]
 
-            _vue = st.radio("Affichage", ["Vidéo", "Incrustation"],
+            _vue = st.radio("Affichage", ["Incrustation", "Vidéo"],
                             horizontal=True, key=f"_gv_vue_{_cle}")
 
             if _vue == "Vidéo":

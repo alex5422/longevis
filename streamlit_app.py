@@ -1,4 +1,4 @@
-"""LongeVis — interface.
+"""VitalScope — interface.
 
 Direction visuelle : lumière et matière, pas de fil de fer. La démarche est
 rendue comme un ruban continu dont la hauteur suit le déplacement et
@@ -22,27 +22,27 @@ import traceback
 import numpy as np
 import streamlit as st
 
-from longevis import body, pipeline
+from vitalscope import body, pipeline
 
 try:                                   # le module des biomarqueurs peut manquer
-    from longevis import kinexa        # si le dépôt n'a pas encore été mis à jour
+    from vitalscope import kinexa        # si le dépôt n'a pas encore été mis à jour
 except ImportError:                    # la page continue de fonctionner sans lui
     kinexa = None
 try:                                   # le rejeu incrusté, idem
-    from longevis import hologramme
+    from vitalscope import hologramme
 except ImportError:
     hologramme = None
 try:                                   # les figures de vitalité
-    from longevis import vue
+    from vitalscope import vue
 except ImportError:
     vue = None
 try:                                   # rejeu vidéo + courbe des 3 tests
-    from longevis import rejeu_beta
+    from vitalscope import rejeu_beta
 except ImportError:
     rejeu_beta = None
 import streamlit.components.v1 as components
-from longevis.config import METHOD_NOISE_FLOOR, REFERENCE_NORMS
-from longevis.report import LABELS, UNITS
+from vitalscope.config import METHOD_NOISE_FLOOR, REFERENCE_NORMS
+from vitalscope.report import LABELS, UNITS
 
 st.set_page_config(page_title="VitalScope", page_icon="◗", layout="wide",
                    initial_sidebar_state="expanded")
@@ -353,7 +353,7 @@ def scene_analyse(cx, spread, fps, passes, turns):
         bandes.append(f'<rect class="turnband" x="{x0:.1f}" y="28" '
                       f'width="{max(2.5, x1 - x0):.1f}" height="{H - 76}" rx="3"/>')
 
-    from longevis import gait as _g
+    from vitalscope import gait as _g
     pts = []
     for a, b in passes:
         times, _f0 = _g.step_events(spread, fps, (a, b))
@@ -627,7 +627,7 @@ with onglets[0]:
             bio = kinexa.biomarqueurs(f, meta, age if age > 0 else None) if kinexa else None
             if bio is None:
                 st.markdown('<div class="iv-msg">Module des biomarqueurs absent : '
-                            'déposez <b>longevis/kinexa.py</b> dans le dépôt pour '
+                            'déposez <b>vitalscope/kinexa.py</b> dans le dépôt pour '
                             'afficher les quatre lectures de l\'Institut.</div>',
                             unsafe_allow_html=True)
             bm, npx, ka, vm = ((bio["bio_mobility"], bio["neuroplasticity"],

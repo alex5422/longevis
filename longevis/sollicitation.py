@@ -7,6 +7,25 @@ de réaction au sol dans la littérature sur la stimulation ostéogénique
 (Frost, "mechanostat", 1987 ; Turner & Robling, 2003 : le stimulus
 ostéogénique dépend du taux de charge autant que de son amplitude). Ce
 n'est pas une mesure directe de force — seulement de vitesse de silhouette.
+
+Le saut talon n'est qu'une des voies de sollicitation osseuse étudiées, pas
+« la » solution : le nom de ce test ne doit pas laisser croire que l'impact
+est la seule stratégie qui vaille. L'essai contrôlé LIFTMOR (Watson et al.,
+J. Bone Miner. Res., 2018) montre qu'un entraînement en résistance à charge
+élevée (squat, soulevé de terre, développé — charge axiale et traction
+musculaire sur les points d'ancrage osseux, sans aucun saut) améliore la
+densité minérale osseuse et la fonction physique chez des femmes
+ménopausées ostéopéniques/ostéoporotiques, avec un effet au moins comparable
+à celui de l'impact seul ; une méta-analyse plus large (Kistler-Fischbacher
+et al., J. Bone Miner. Res., 2023) confirme l'effet propre de l'entraînement
+par impact modéré à élevé sur la structure osseuse à tout âge, sans pour
+autant qu'il surpasse la résistance à charge élevée. Autrement dit : impact
+(ce que mesure ce module), traction/compression sous charge (résistance) et,
+plus largement, la charge répétée du geste quotidien (vitesse de marche
+habituelle, capacité à se lever d'une chaise sans les mains) sont des voies
+distinctes vers le même os — ce test n'observe que la première, et un score
+bas ici ne dit rien sur les deux autres, déjà filmées par ailleurs dans cet
+outil (marche, transferts assis-debout).
 """
 
 from __future__ import annotations

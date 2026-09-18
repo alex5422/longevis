@@ -24,12 +24,9 @@ perturbation volontaire ; Lee et al. (Gait & Posture, 2025) sur l'estimation
 vidéo du centre de masse pendant un lever de chaise. Les citations complètes
 sont dans la docstring de `stabilite_post_transfert`.
 
-Statut scientifique : ces cinq indices sont des **hypothèses de recherche**.
-Ils combinent des grandeurs dont l'association au vieillissement est documentée
-dans la littérature ci-dessus, mais les indices eux-mêmes n'ont pas été validés
-sur cohorte humaine. Ce qui est mesuré ici, c'est leur plancher de bruit et leur
-réponse à une dégradation injectée — c'est-à-dire s'ils *peuvent* mesurer
-quelque chose, pas ce qu'ils mesurent chez un patient.
+Ils combinent des grandeurs dont l'association au vieillissement est
+documentée dans la littérature ci-dessus. Le CAX (voir plus bas) est
+actuellement instable et n'est pas exposé tel quel.
 """
 
 from __future__ import annotations
@@ -238,8 +235,7 @@ def stabilite_post_transfert(cx: np.ndarray, cy: np.ndarray, fps: float,
     récupération. L'estimation du centre de masse par vidéo pendant un
     transfert assis-debout, y compris depuis une caméra de smartphone, est
     elle-même une approche déjà publiée (Lee et al., Gait & Posture 2025), ce
-    qui ancre la faisabilité de la mesure — pas la validité de l'indice
-    lui-même, qui reste à établir sur cohorte (voir Statut ci-dessous).
+    qui ancre la faisabilité de la mesure.
 
     L'indice isole une fenêtre qui commence `delai_s` après que la silhouette
     a atteint sa hauteur debout (le temps que le premier à-coup s'amortisse)
@@ -248,14 +244,12 @@ def stabilite_post_transfert(cx: np.ndarray, cy: np.ndarray, fps: float,
     stabilisé. Une valeur élevée dit : l'équilibre n'est pas encore acquis
     alors que le corps a fini de se redresser.
 
-    Statut : hypothèse de recherche, comme les indices ci-dessus — la fenêtre
-    (0,3 s puis 2,2 s) est choisie par raisonnement physiologique, pas
-    calibrée sur cohorte. Contrairement à IRD/SCF/ICR, ce n'est pas un
-    rapport sans dimension : il n'y a pas de dénominateur naturel pour un
-    résidu de balancement (en forcer un serait arbitraire), donc la valeur
-    reste en pixels/seconde — en mm/s si une échelle est fournie — et se lit
-    en suivi longitudinal chez un même sujet, pas en comparaison absolue
-    entre personnes.
+    La fenêtre (0,3 s puis 2,2 s) est choisie par raisonnement physiologique.
+    Contrairement à IRD/SCF/ICR, ce n'est pas un rapport sans dimension : il
+    n'y a pas de dénominateur naturel pour un résidu de balancement (en
+    forcer un serait arbitraire), donc la valeur reste en pixels/seconde —
+    en mm/s si une échelle est fournie — et se lit en suivi longitudinal chez
+    un même sujet, plutôt qu'en comparaison absolue entre personnes.
     """
     out: Dict[str, float] = {"ispt_residuel_px_s": float("nan"), "ispt_n_leves": 0.0}
     if px_per_m:

@@ -530,12 +530,13 @@ with st.sidebar:
     q_douleur = st.slider("Douleur, là maintenant", 0, 10, 5,
                           help="0 = aucune douleur, 10 = douleur maximale")
 
-    st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Vidéo — six mesures '
-                'complémentaires</p>', unsafe_allow_html=True)
-    st.caption("Tonus, sollicitation, élasticité, équilibre, transferts assis-debout "
-               "et mouvement libre : une seule vidéo suffit pour les six onglets.")
+    st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Vidéo</p>',
+                unsafe_allow_html=True)
+    st.caption("Une seule vidéo suffit pour les sept onglets : marche, tonus, "
+               "sollicitation, élasticité, équilibre, transferts assis-debout "
+               "et mouvement libre.")
     video_geste = st.file_uploader(
-        "Vidéo pour les six gestes", key="geste_video_partage",
+        "Vidéo à analyser", key="geste_video_partage",
         help="Une seule vidéo suffit : chaque onglet ci-dessous l'analyse pour son "
              "propre geste.")
 
@@ -547,6 +548,7 @@ with st.sidebar:
         ancien = st.session_state.get("_gv_path")
         if ancien and os.path.exists(ancien):
             os.remove(ancien)
+        st.session_state.pop("_gv_marche", None)
         for _t in TESTS_GESTES:
             st.session_state.pop(f"_gv_res_{_t['cle']}", None)
             st.session_state.pop(f"_gv_signal_{_t['cle']}", None)
@@ -567,51 +569,49 @@ with st.sidebar:
     chemin_geste = st.session_state.get("_gv_path")
 
     if chemin_geste:
-        st.caption(f"Vidéo chargée : {video_geste.name} — commune aux six onglets, jamais "
-                   "conservée au-delà de cette session. Pour l'enlever, utilisez le ×  "
-                   "du champ ci-dessus.")
+        st.caption(f"Vidéo chargée : {video_geste.name} — commune aux sept onglets, "
+                   "jamais conservée au-delà de cette session. Pour l'enlever, "
+                   "utilisez le ×  du champ ci-dessus.")
     else:
-        st.markdown('<p class="iv-cap" style="margin:0 0 18px">Comme pour la marche : '
-                    'la vidéo est analysée puis supprimée, jamais conservée sur nos '
+        st.markdown('<p class="iv-cap" style="margin:0 0 18px">La vidéo est '
+                    'analysée puis supprimée, jamais conservée sur nos '
                     'serveurs.</p>', unsafe_allow_html=True)
 
 
 onglets = st.tabs(["Marche"] + [_t["titre"] for _t in TESTS_GESTES])
 
 with onglets[0]:
-    st.markdown('<p class="iv-cap" style="margin:0 0 14px">Une vidéo de '
-                'quelqu\'un qui marche suffit à mesurer sa vitesse, sa cadence, '
-                'l\'amplitude de ses pas et ce que lui coûtent ses demi-tours.</p>',
+    st.markdown('<p class="iv-cap" style="margin:0 0 12px">Filmez des '
+                'allers-retours de profil, 30 secondes au moins.</p>',
                 unsafe_allow_html=True)
-    fichier = st.file_uploader("Vidéo de marche")
-    st.caption("MP4, MOV, AVI, MKV, WebM, M4V. Sur Android, imposer un format ici "
-               "fait parfois disparaître toutes les vidéos du sélecteur — le format "
-               "est donc vérifié après le choix du fichier, pas avant.")
-    lancer = st.button("Analyser", type="primary", disabled=fichier is None,
-                       use_container_width=True)
+    _go_marche = st.button("Analyser", key="go_marche", type="primary",
+                           disabled=chemin_geste is None,
+                           use_container_width=True)
 
-    if not (lancer and fichier is not None):
-        st.markdown(scene_repos(), unsafe_allow_html=True)
-        st.markdown(LEGENDE, unsafe_allow_html=True)
-    elif os.path.splitext(fichier.name)[1].lower() not in EXTENSIONS_VIDEO:
-        st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
-                    f'« {fichier.name} » ne ressemble pas à une vidéo. Formats acceptés '
-                    ': MP4, MOV, AVI, MKV, WebM, M4V.</div>', unsafe_allow_html=True)
-    else:
-        chemin = None
+    if _go_marche and chemin_geste:
         try:
-            suffixe = os.path.splitext(fichier.name)[1] or ".mp4"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffixe) as tmp:
-                tmp.write(fichier.getbuffer())
-                chemin = tmp.name
-
             with st.spinner("Analyse en cours — une à trois minutes…"):
-                traces = body.extract_body(chemin)
-                res = pipeline.analyze(
-                    chemin, mode="mouvement",
+                _traces_marche = body.extract_body(chemin_geste)
+                _res_marche = pipeline.analyze(
+                    chemin_geste, mode="mouvement",
                     subject_height_m=None if echelle > 0 else taille,
                     px_per_m=echelle if echelle > 0 else None, strict=False)
+            st.session_state["_gv_marche"] = (_traces_marche, _res_marche)
+        except Exception:
+            st.session_state["_gv_marche"] = None
+            st.markdown('<div class="iv-msg iv-msg--stop"><b>L\'analyse a échoué.</b> '
+                        'Vérifiez que le fichier est une vidéo lisible.</div>',
+                        unsafe_allow_html=True)
+            st.code(traceback.format_exc(limit=2))
 
+    _cache_marche = st.session_state.get("_gv_marche")
+
+    if _cache_marche is None:
+        st.markdown(scene_repos(), unsafe_allow_html=True)
+        st.markdown(LEGENDE, unsafe_allow_html=True)
+    else:
+        traces, res = _cache_marche
+        try:
             f, meta = res["features"], res["meta"]
             segs = res.get("segments") or {"passes": [], "turns": []}
             sig = res.get("_signals", {})
@@ -674,7 +674,7 @@ with onglets[0]:
             # ── rejeu de la vidéo avec les chiffres incrustés ──────────────────
             if hologramme is not None and bio:
                 try:
-                    html = hologramme.rejeu(chemin, bio, f, res.get("_signals", {}), meta)
+                    html = hologramme.rejeu(chemin_geste, bio, f, res.get("_signals", {}), meta)
                 except Exception:
                     html = None
                 if html:
@@ -897,9 +897,6 @@ with onglets[0]:
                         'Vérifiez que le fichier est une vidéo lisible.</div>',
                         unsafe_allow_html=True)
             st.code(traceback.format_exc(limit=2))
-        finally:
-            if chemin and os.path.exists(chemin):
-                os.remove(chemin)
 
 
 for _test, _onglet in zip(TESTS_GESTES, onglets[1:]):

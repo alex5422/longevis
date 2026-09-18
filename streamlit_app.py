@@ -424,23 +424,22 @@ def _cartes_html(metriques):
 
 
 TESTS_GESTES = [
-    {"cle": "tonus", "titre": "Tonus (gainage)",
-     "aide": "Filmez de profil, en appui sur avant-bras et pointes de pieds, "
-             "en restant le plus immobile possible.",
+    {"cle": "tonus", "titre": "Core Hold",
+     "aide": "Profil, appui avant-bras et pointes de pied, immobile.",
      "fn": pipeline.analyze_tonus,
      "metriques": lambda f: [
-         ("Score Gainage", f.get("gainage_score"), "/100",
+         ("Core Hold Score", f.get("gainage_score"), "/100",
           0, True),
          ("Durée tenue", f.get("gainage_duree_s"), " s", 1),
          ("Stabilité", f.get("gainage_stabilite"), "/100", 0),
          ("Alignement", f.get("gainage_alignement"), "/100", 0),
      ],
      "signal_cle": "trunk_y", "signal_titre": "Position verticale du tronc", "signal_unite": "px"},
-    {"cle": "sollicitation", "titre": "Sollicitation anti-ostéoporotique",
-     "aide": "Filmez de profil ou de face une série de petits sauts talon au sol.",
+    {"cle": "sollicitation", "titre": "Bone Impact",
+     "aide": "Profil ou face, une série de petits sauts, talon au sol.",
      "fn": pipeline.analyze_sollicitation,
      "metriques": lambda f: [
-         ("Score Sollicitation", f.get("sollicitation_score"), "/100",
+         ("Bone Impact Score", f.get("sollicitation_score"), "/100",
           0, True),
          ("Impacts détectés", f.get("impact_nombre"), "", 0),
          ("Cadence", f.get("impact_taux_par_min"), " /min", 0),
@@ -448,34 +447,32 @@ TESTS_GESTES = [
          ("Régularité", f.get("impact_regularite"), "/100", 0),
      ],
      "signal_cle": "foot_y", "signal_titre": "Hauteur du pied", "signal_unite": "px"},
-    {"cle": "elasticite", "titre": "Élasticité",
-     "aide": "Filmez de face une flexion avant ou un étirement tenu au point le plus loin.",
+    {"cle": "elasticite", "titre": "Flexibility",
+     "aide": "Face caméra, flexion avant ou étirement tenu au maximum.",
      "fn": pipeline.analyze_elasticite,
      "metriques": lambda f: [
-         ("Score Souplesse", f.get("flexion_score"), "/100",
+         ("Flexibility Score", f.get("flexion_score"), "/100",
           0, True),
          ("Amplitude", f.get("flexion_amplitude_pct"), " %", 0),
          ("Tenue au maximum", f.get("flexion_maintien_s"), " s", 1),
      ],
      "signal_cle": "height_px", "signal_titre": "Hauteur de la silhouette", "signal_unite": "px"},
-    {"cle": "equilibre", "titre": "Équilibre",
-     "aide": "Filmez de face un appui unipodal (une jambe levée), bras croisés, "
-             "en restant immobile 15 à 30 secondes.",
+    {"cle": "equilibre", "titre": "Balance",
+     "aide": "Face caméra, une jambe levée, bras croisés, 15 à 30 secondes immobile.",
      "fn": pipeline.analyze_equilibre,
      "metriques": lambda f: [
-         ("Score Équilibre", f.get("equilibre_score"), "/100",
+         ("Balance Score", f.get("equilibre_score"), "/100",
           0, True),
          ("Oscillation avant-arrière", f.get("sway_rms_ap_mm"), " mm", 1),
          ("Oscillation latérale", f.get("sway_rms_ml_mm"), " mm", 1),
          ("Vitesse d'oscillation", f.get("sway_path_mm_s"), " mm/s", 0),
      ],
      "signal_cle": "cx", "signal_titre": "Position du centre du corps", "signal_unite": "px"},
-    {"cle": "transfert", "titre": "Transferts assis-debout",
-     "aide": "Filmez de profil une série de levers et d'assises depuis une chaise, "
-             "à un rythme régulier.",
+    {"cle": "transfert", "titre": "Sit-to-Stand",
+     "aide": "Profil, levers et assises enchaînés, rythme régulier.",
      "fn": pipeline.analyze_transfert,
      "metriques": lambda f: [
-         ("Score Transfert", f.get("transfert_score"), "/100",
+         ("Sit-to-Stand Score", f.get("transfert_score"), "/100",
           0, True),
          ("Levers détectés", f.get("sts_count"), "", 0),
          ("Durée moyenne", f.get("sts_mean_dur_s"), " s", 1),
@@ -483,9 +480,9 @@ TESTS_GESTES = [
          ("Oscillation résiduelle après le lever", f.get("ispt_residuel_mm_s"), " mm/s", 0),
      ],
      "signal_cle": "height", "signal_titre": "Hauteur de la silhouette", "signal_unite": "px"},
-    {"cle": "mouvement", "titre": "Mouvement libre",
-     "aide": "Filmez de face ou de profil un mouvement répété au choix : "
-             "gymnastique douce, tai-chi, geste de rééducation.",
+    {"cle": "mouvement", "titre": "Free Motion",
+     "aide": "Face ou profil, un mouvement répété au choix — tai-chi, gym douce, "
+             "rééducation.",
      "fn": pipeline.analyze_mouvement_libre,
      "metriques": lambda f: [
          ("Amplitude du geste", f.get("move_amplitude_stature"), " ×stature", 2),
@@ -532,9 +529,8 @@ with st.sidebar:
 
     st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Vidéo</p>',
                 unsafe_allow_html=True)
-    st.caption("Une seule vidéo suffit pour les sept onglets : marche, tonus, "
-               "sollicitation, élasticité, équilibre, transferts assis-debout "
-               "et mouvement libre.")
+    st.caption("Une seule vidéo suffit pour les sept tests : Gait, Core Hold, "
+               "Bone Impact, Flexibility, Balance, Sit-to-Stand et Free Motion.")
     video_geste = st.file_uploader(
         "Vidéo à analyser", key="geste_video_partage",
         help="Une seule vidéo suffit : chaque onglet ci-dessous l'analyse pour son "
@@ -578,11 +574,11 @@ with st.sidebar:
                     'serveurs.</p>', unsafe_allow_html=True)
 
 
-onglets = st.tabs(["Marche"] + [_t["titre"] for _t in TESTS_GESTES])
+onglets = st.tabs(["Gait"] + [_t["titre"] for _t in TESTS_GESTES])
 
 with onglets[0]:
-    st.markdown('<p class="iv-cap" style="margin:0 0 12px">Filmez des '
-                'allers-retours de profil, 30 secondes au moins.</p>',
+    st.markdown('<p class="iv-cap" style="margin:0 0 12px">Profil, '
+                'allers-retours, 30 secondes minimum.</p>',
                 unsafe_allow_html=True)
     _go_marche = st.button("Analyser", key="go_marche", type="primary",
                            disabled=chemin_geste is None,

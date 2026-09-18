@@ -80,39 +80,71 @@ def _analyze_geste(path: str, analyze_fn,
 
 def analyze_tonus(path: str, subject_height_m: Optional[float] = None,
                   px_per_m: Optional[float] = None) -> Dict[str, object]:
-    """Gainage chronométré filmé de profil — hors score Kinexa."""
+    """Gainage chronométré filmé de profil — son propre score (`gainage_score`,
+    voir `tonus.score_gainage`), indépendant du score Kinexa."""
     return _analyze_geste(path, tonus.analyze_tonus, subject_height_m, px_per_m)
 
 
 def analyze_sollicitation(path: str, subject_height_m: Optional[float] = None,
                           px_per_m: Optional[float] = None) -> Dict[str, object]:
-    """Petits sauts talon filmés — hors score Kinexa."""
+    """Petits sauts talon filmés — son propre score (`sollicitation_score`,
+    voir `sollicitation.score_sollicitation`), qui mesure la régularité du
+    stimulus plutôt que son intensité."""
     return _analyze_geste(path, sollicitation.analyze_sollicitation, subject_height_m, px_per_m)
 
 
 def analyze_elasticite(path: str, subject_height_m: Optional[float] = None,
                        px_per_m: Optional[float] = None) -> Dict[str, object]:
-    """Flexion/étirement filmé de face — hors score Kinexa."""
+    """Flexion/étirement filmé de face — son propre score (`flexion_score`,
+    voir `elasticite.score_souplesse`), indépendant du score Kinexa."""
     return _analyze_geste(path, elasticite.analyze_elasticite, subject_height_m, px_per_m)
+
+
+def _score_domaine(features: Dict[str, float], domaine: str) -> Dict[str, float]:
+    """Score /100 d'un seul domaine `index.DOMAINS`, à partir des normes de
+    population déjà enregistrées dans `config.REFERENCE_NORMS` — le même
+    calcul que celui utilisé pour le composite global, restreint à un domaine.
+    Équilibre et transfert sont des domaines déjà normés : ce n'était que
+    l'appel qui manquait."""
+    z = index.z_scores(features, strict=True)
+    doms = index.domain_scores(z)
+    d = doms.get(domaine, {"score": float("nan"), "coverage": 0.0})
+    return {f"{domaine}_score": (round(d["score"], 1) if np.isfinite(d["score"]) else float("nan")),
+            f"{domaine}_couverture": d["coverage"]}
 
 
 def analyze_equilibre(path: str, subject_height_m: Optional[float] = None,
                       px_per_m: Optional[float] = None) -> Dict[str, object]:
-    """Appui unipodal chronométré, filmé de face — hors score Kinexa.
+    """Appui unipodal chronométré, filmé de face.
 
     Réutilise directement `analyze_body` avec la tâche « posture » forcée :
     le moteur de mesure de l'oscillation posturale existe déjà dans
     `gait.postural_sway`, seule l'auto-détection de tâche l'empêchait
-    d'être sollicité de façon fiable depuis une vidéo dédiée."""
-    return analyze_body(path, task="posture", subject_height_m=subject_height_m,
-                        px_per_m=px_per_m)
+    d'être sollicité de façon fiable depuis une vidéo dédiée.
+
+    `sway_rms_ap_mm`/`sway_rms_ml_mm`/`sway_path_mm_s` sont déjà dans
+    `config.REFERENCE_NORMS`, domaine « equilibre » (appui unipodal et
+    mortalité toutes causes, Araujo et al., Br. J. Sports Med. 2022) — d'où
+    `equilibre_score`, calculé ici au lieu de rester du côté Kinexa."""
+    res = analyze_body(path, task="posture", subject_height_m=subject_height_m,
+                       px_per_m=px_per_m)
+    res["features"].update(_score_domaine(res["features"], "equilibre"))
+    return res
 
 
 def analyze_transfert(path: str, subject_height_m: Optional[float] = None,
                       px_per_m: Optional[float] = None) -> Dict[str, object]:
-    """Levers de chaise chronométrés, filmés de profil — hors score Kinexa."""
-    return analyze_body(path, task="leve", subject_height_m=subject_height_m,
-                        px_per_m=px_per_m)
+    """Levers de chaise chronométrés, filmés de profil.
+
+    `sts_mean_dur_s` est dans `config.REFERENCE_NORMS`, domaine « transfert »
+    (Short Physical Performance Battery — vitesse de marche, équilibre, lever
+    de chaise) — d'où `transfert_score`, calculé ici au lieu de rester du
+    côté Kinexa. L'ISPT (`composites.stabilite_post_transfert`) reste séparé :
+    indice complémentaire, non normé sur population."""
+    res = analyze_body(path, task="leve", subject_height_m=subject_height_m,
+                       px_per_m=px_per_m)
+    res["features"].update(_score_domaine(res["features"], "transfert"))
+    return res
 
 
 def analyze_mouvement_libre(path: str, subject_height_m: Optional[float] = None,

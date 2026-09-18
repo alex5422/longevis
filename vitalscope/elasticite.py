@@ -20,7 +20,7 @@ def amplitude(height_px: np.ndarray, valid: np.ndarray, fps: float,
               reference_s: float = 1.5) -> Dict[str, float]:
     n = len(valid)
     vide = {"flexion_amplitude_pct": float("nan"),
-            "flexion_maintien_s": float("nan")}
+            "flexion_maintien_s": float("nan"), "flexion_score": float("nan")}
     if n < int(3 * fps):
         return vide
 
@@ -38,8 +38,24 @@ def amplitude(height_px: np.ndarray, valid: np.ndarray, fps: float,
     seuil = reference - 0.9 * (reference - minimum)
     tenue = float(np.sum(h < seuil) / fps)
 
+    score = score_souplesse(amp, tenue)
     return {"flexion_amplitude_pct": round(amp, 1),
-            "flexion_maintien_s": round(tenue, 1)}
+            "flexion_maintien_s": round(tenue, 1),
+            "flexion_score": score}
+
+
+def score_souplesse(amplitude_pct: float, maintien_s: float) -> float:
+    """Score Souplesse /100 — amplitude atteinte, avec un bonus de tenue.
+
+    `amplitude_pct` est déjà un proxy 0-100 auto-normalisé sur la hauteur
+    debout du sujet. La tenue au maximum ajoute jusqu'à 10 points (2 points
+    par seconde tenue au-delà du point le plus loin, plafonné) : un
+    aller-retour rapide n'a pas la même valeur qu'une position tenue.
+    """
+    if not np.isfinite(amplitude_pct):
+        return float("nan")
+    bonus = min(10.0, 2.0 * maintien_s) if np.isfinite(maintien_s) else 0.0
+    return round(min(100.0, amplitude_pct + bonus), 1)
 
 
 def analyze_elasticite(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:

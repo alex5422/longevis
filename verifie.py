@@ -39,6 +39,7 @@ def t(nom, fn):
 # ─────────────────────────────────────────────────────────────────────────
 from vitalscope.body import BodyTraces                          # noqa: E402
 from vitalscope import gait, kinexa, hologramme, vue            # noqa: E402
+from vitalscope import tonus, sollicitation, elasticite, pipeline  # noqa: E402
 
 
 def traces(cadence=100., amp_pas_m=0.55, cv=3., duree=12., fps=30.,
@@ -544,6 +545,66 @@ def _regularite_lue():
 t("le rythme d'un geste quelconque est mesuré", _cadence_generique)
 t("les quatre lectures sortent aussi sur un geste sans marche", _quatre_libre)
 t("un geste régulier est mieux noté qu'un geste heurté", _regularite_lue)
+
+
+print("── les scores des gestes hors marche ──")
+
+
+def _score_gainage_meilleur_si_stable():
+    bon = tonus.score_gainage(stabilite=92., alignement=88.)
+    mauvais = tonus.score_gainage(stabilite=40., alignement=35.)
+    assert 0 <= mauvais < bon <= 100, "%.1f contre %.1f" % (mauvais, bon)
+
+
+def _score_gainage_vide_sans_mesure():
+    assert np.isnan(tonus.score_gainage(float("nan"), 80.)), "score produit sans stabilité"
+
+
+def _score_souplesse_bonus_de_tenue():
+    court = elasticite.score_souplesse(amplitude_pct=70., maintien_s=0.5)
+    tenu = elasticite.score_souplesse(amplitude_pct=70., maintien_s=6.)
+    assert tenu > court, "la tenue au maximum ne relève pas le score"
+    assert elasticite.score_souplesse(amplitude_pct=98., maintien_s=10.) <= 100., \
+        "le bonus de tenue dépasse le plafond"
+
+
+def _score_sollicitation_exige_assez_d_impacts():
+    assert np.isnan(sollicitation.score_sollicitation(0.05, 3)), \
+        "score produit avec seulement 3 impacts"
+    regulier = sollicitation.score_sollicitation(0.05, 8)
+    irregulier = sollicitation.score_sollicitation(0.60, 8)
+    assert regulier > irregulier, "une série irrégulière est mieux notée que régulière"
+
+
+def _domaine_equilibre_branche_sur_les_normes():
+    bon = pipeline._score_domaine(
+        {"sway_rms_ap_mm": 4.0, "sway_rms_ml_mm": 2.5, "sway_path_mm_s": 10.0},
+        "equilibre")
+    mauvais = pipeline._score_domaine(
+        {"sway_rms_ap_mm": 14.0, "sway_rms_ml_mm": 10.0, "sway_path_mm_s": 34.0},
+        "equilibre")
+    assert np.isfinite(bon["equilibre_score"]), "score équilibre absent"
+    assert bon["equilibre_score"] > mauvais["equilibre_score"], \
+        "une oscillation plus faible n'est pas mieux notée"
+    assert bon["equilibre_couverture"] == 1.0, "couverture incomplète malgré les 3 mesures"
+
+
+def _domaine_transfert_branche_sur_les_normes():
+    r = pipeline._score_domaine({"sts_mean_dur_s": 1.2}, "transfert")
+    assert np.isfinite(r["transfert_score"]), "score transfert absent"
+
+
+t("le gainage note mieux une position stable qu'une position instable",
+  _score_gainage_meilleur_si_stable)
+t("le score de gainage reste vide sans mesure de stabilité", _score_gainage_vide_sans_mesure)
+t("la souplesse gagne un bonus quand l'amplitude maximale est tenue",
+  _score_souplesse_bonus_de_tenue)
+t("la sollicitation exige assez d'impacts avant de noter la régularité",
+  _score_sollicitation_exige_assez_d_impacts)
+t("le score d'équilibre s'appuie sur les normes déjà enregistrées",
+  _domaine_equilibre_branche_sur_les_normes)
+t("le score de transfert s'appuie sur les normes déjà enregistrées",
+  _domaine_transfert_branche_sur_les_normes)
 
 
 print("── les figures de vitalité ──")

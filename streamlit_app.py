@@ -412,7 +412,15 @@ def _signal_defaut(test, features):
 
 
 def _cartes_html(metriques):
-    return "".join(carte(nom, val, unite, dec=dec) for (nom, val, unite, dec) in metriques)
+    """Chaque tuple est (nom, valeur, unité, décimales[, hero]) — `hero` est
+    optionnel et vaut False par défaut, pour ne pas casser les appels
+    existants à 4 éléments."""
+    html = []
+    for m in metriques:
+        nom, val, unite, dec = m[0], m[1], m[2], m[3]
+        hero = m[4] if len(m) > 4 else False
+        html.append(carte(nom, val, unite, dec=dec, hero=hero))
+    return "".join(html)
 
 
 TESTS_GESTES = [
@@ -421,6 +429,8 @@ TESTS_GESTES = [
              "en restant le plus immobile possible.",
      "fn": pipeline.analyze_tonus,
      "metriques": lambda f: [
+         ("Score Gainage", f.get("gainage_score"), "/100",
+          0, True),
          ("Durée tenue", f.get("gainage_duree_s"), " s", 1),
          ("Stabilité", f.get("gainage_stabilite"), "/100", 0),
          ("Alignement", f.get("gainage_alignement"), "/100", 0),
@@ -430,15 +440,20 @@ TESTS_GESTES = [
      "aide": "Filmez de profil ou de face une série de petits sauts talon au sol.",
      "fn": pipeline.analyze_sollicitation,
      "metriques": lambda f: [
+         ("Score Sollicitation", f.get("sollicitation_score"), "/100",
+          0, True),
          ("Impacts détectés", f.get("impact_nombre"), "", 0),
          ("Cadence", f.get("impact_taux_par_min"), " /min", 0),
          ("Vitesse à l'impact", f.get("impact_vitesse_descente"), " m/s", 2),
+         ("Régularité", f.get("impact_regularite"), "/100", 0),
      ],
      "signal_cle": "foot_y", "signal_titre": "Hauteur du pied", "signal_unite": "px"},
     {"cle": "elasticite", "titre": "Élasticité",
      "aide": "Filmez de face une flexion avant ou un étirement tenu au point le plus loin.",
      "fn": pipeline.analyze_elasticite,
      "metriques": lambda f: [
+         ("Score Souplesse", f.get("flexion_score"), "/100",
+          0, True),
          ("Amplitude", f.get("flexion_amplitude_pct"), " %", 0),
          ("Tenue au maximum", f.get("flexion_maintien_s"), " s", 1),
      ],
@@ -448,6 +463,8 @@ TESTS_GESTES = [
              "en restant immobile 15 à 30 secondes.",
      "fn": pipeline.analyze_equilibre,
      "metriques": lambda f: [
+         ("Score Équilibre", f.get("equilibre_score"), "/100",
+          0, True),
          ("Oscillation avant-arrière", f.get("sway_rms_ap_mm"), " mm", 1),
          ("Oscillation latérale", f.get("sway_rms_ml_mm"), " mm", 1),
          ("Vitesse d'oscillation", f.get("sway_path_mm_s"), " mm/s", 0),
@@ -458,6 +475,8 @@ TESTS_GESTES = [
              "à un rythme régulier.",
      "fn": pipeline.analyze_transfert,
      "metriques": lambda f: [
+         ("Score Transfert", f.get("transfert_score"), "/100",
+          0, True),
          ("Levers détectés", f.get("sts_count"), "", 0),
          ("Durée moyenne", f.get("sts_mean_dur_s"), " s", 1),
          ("Vitesse de lever", f.get("sts_rise_speed"), " stature/s", 2),
@@ -762,9 +781,8 @@ with onglets[0]:
                         + '</div>'
                         '<div class="iv-msg">Ces deux indices sont des rapports sans '
                         'dimension : ils ne dépendent ni de la calibration, ni de la '
-                        'distance de la caméra. Ce sont des <b>hypothèses de '
-                        'recherche</b>, non validées sur cohorte humaine — à lire en '
-                        'comparant une personne à elle-même dans le temps.</div>',
+                        'distance de la caméra — à lire en comparant une personne à '
+                        'elle-même dans le temps.</div>',
                         unsafe_allow_html=True)
 
             st.markdown('<p class="iv-h">Contrôle technique de l\'acquisition</p>',

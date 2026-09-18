@@ -38,7 +38,7 @@ def hold(centroid: np.ndarray, trunk_y: np.ndarray, bbox: np.ndarray,
     """
     n = len(valid)
     vide = {"gainage_duree_s": 0.0, "gainage_stabilite": float("nan"),
-            "gainage_alignement": float("nan")}
+            "gainage_alignement": float("nan"), "gainage_score": float("nan")}
     if n < int(2 * fps):
         return vide
 
@@ -84,9 +84,28 @@ def hold(centroid: np.ndarray, trunk_y: np.ndarray, bbox: np.ndarray,
     var_ratio = float(np.std(ratio)) / moy_ratio
     alignement = float(np.clip(100.0 * (1.0 - var_ratio / 0.08), 0.0, 100.0))
 
+    score = score_gainage(stabilite, alignement)
     return {"gainage_duree_s": round(duree, 1),
             "gainage_stabilite": round(stabilite, 1),
-            "gainage_alignement": round(alignement, 1)}
+            "gainage_alignement": round(alignement, 1),
+            "gainage_score": score}
+
+
+def score_gainage(stabilite: float, alignement: float) -> float:
+    """Score Gainage /100 — moyenne de la stabilité et de l'alignement tenus
+    pendant le meilleur segment immobile détecté.
+
+    Stabilité et alignement sont déjà des scores 0-100 auto-normalisés sur le
+    bruit de segmentation propre à la vidéo, ce qui permet de les combiner
+    directement, sans étalonnage externe.
+
+    La durée tenue n'entre pas dans le score et reste affichée séparément —
+    elle se lit d'un test à l'autre chez la même personne, pas en comparaison
+    entre personnes.
+    """
+    if not (np.isfinite(stabilite) and np.isfinite(alignement)):
+        return float("nan")
+    return round(0.5 * stabilite + 0.5 * alignement, 1)
 
 
 def analyze_tonus(b: BodyTraces, px_per_m: Optional[float] = None) -> Dict[str, object]:

@@ -492,7 +492,32 @@ def mouvement_libre(cx: np.ndarray, cy: np.ndarray, spread: np.ndarray,
                 out["move_n_cycles"] = float(croise.size - 1)
     seuil = max(0.02 * med_h, 0.25 * float(np.median(v)))
     out["move_active_pct"] = float(100.0 * np.mean(v > seuil))
+    out["move_score"] = score_mouvement(out["move_amplitude_stature"],
+                                        out["move_active_pct"],
+                                        out.get("move_cycle_cv_pct"))
     return out
+
+
+def score_mouvement(amplitude_stature: float, active_pct: float,
+                    cycle_cv_pct: Optional[float] = None) -> float:
+    """Score Mouvement libre /100 — proxy heuristique, hors score Kinexa.
+
+    Sans repérage articulaire ni tâche prédéfinie, ce geste n'a pas de norme
+    de population comme la marche ou l'appui unipodal : le score combine ce
+    qui est mesurable pour n'importe quel mouvement — l'amplitude relative
+    à la stature (le geste mobilise-t-il vraiment le corps ?), le temps actif
+    (soutenu ou juste un sursaut ponctuel ?) et, quand elle est mesurable, la
+    régularité d'un cycle à l'autre. Un signal de suivi personnel, pas une
+    évaluation clinique du mouvement.
+    """
+    if not (np.isfinite(amplitude_stature) and np.isfinite(active_pct)):
+        return float("nan")
+    amp = float(np.clip(100.0 * amplitude_stature / 0.6, 0.0, 100.0))
+    actif = float(np.clip(active_pct, 0.0, 100.0))
+    if cycle_cv_pct is not None and np.isfinite(cycle_cv_pct):
+        reg = float(np.clip(100.0 * (1.0 - cycle_cv_pct / 60.0), 0.0, 100.0))
+        return round(0.45 * amp + 0.30 * actif + 0.25 * reg, 1)
+    return round(0.6 * amp + 0.4 * actif, 1)
 
 
 

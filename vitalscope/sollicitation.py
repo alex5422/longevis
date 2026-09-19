@@ -20,7 +20,7 @@ from .body import BodyTraces
 
 
 def impacts(foot_y: np.ndarray, valid: np.ndarray, fps: float,
-            prominence_px: float = 8.0,
+            prominence_px: float = 5.0,
             px_per_m: Optional[float] = None) -> Dict[str, float]:
     """`px_per_m` : échelle de conversion (pixels par mètre), fournie par
     l'appelant — taille du sujet déclarée ou distance connue dans le champ.
@@ -39,7 +39,7 @@ def impacts(foot_y: np.ndarray, valid: np.ndarray, fps: float,
     # y croît vers le bas de l'image : un impact est un maximum local (le
     # pied est à son point le plus bas de la trajectoire à cet instant).
     pics, _ = sps.find_peaks(y, prominence=prominence_px,
-                              distance=max(1, int(0.25 * fps)))
+                              distance=max(1, int(0.18 * fps)))
     if len(pics) == 0:
         return {**vide, "impact_taux_par_min": 0.0}
 

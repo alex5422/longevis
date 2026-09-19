@@ -485,6 +485,8 @@ TESTS_GESTES = [
              "rééducation.",
      "fn": pipeline.analyze_mouvement_libre,
      "metriques": lambda f: [
+         ("Free Motion Score", f.get("move_score"), "/100",
+          0, True),
          ("Amplitude du geste", f.get("move_amplitude_stature"), " ×stature", 2),
          ("Rythme", f.get("move_rate_cpm"), " cycles/min", 0),
          ("Temps actif", f.get("move_active_pct"), " %", 0),

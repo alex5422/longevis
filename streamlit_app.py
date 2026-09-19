@@ -540,7 +540,7 @@ else:
                 'serveurs.</p>', unsafe_allow_html=True)
 
 
-with st.sidebar:
+with st.expander("Réglages & ressenti du jour"):
     st.markdown('<p class="iv-lab" style="margin-bottom:10px">Réglages</p>',
                 unsafe_allow_html=True)
     taille = st.number_input("Taille du sujet (m)", value=1.72, min_value=0.5,

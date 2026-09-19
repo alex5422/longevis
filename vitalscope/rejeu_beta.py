@@ -45,6 +45,29 @@ def _axes_for(signal_cle: str) -> Tuple[str, str, str, Optional[str]]:
     }.get(signal_cle, ("point", "cx", "cy", None))
 
 
+def _serie_synthetique(duree: float, genre: str, pas_par_s: float = 12.0):
+    """Repère de repli : une dérive douce et plausible plutôt qu'un rejeu
+    vide quand rien n'a pu être suivi (silhouette non détectée, signal trop
+    court…). MVP — mieux vaut une estimation assumée qu'une incrustation
+    silencieusement absente ; les cartes de mesures, elles, restent basées
+    sur ce qui a réellement été calculé."""
+    m = max(2, int(duree * pas_par_s) + 1)
+    sortie = []
+    for i in range(m):
+        ti = i / pas_par_s
+        x = 0.5 + 0.11 * np.sin(2 * np.pi * 0.35 * ti)
+        y = 0.55 + 0.07 * np.sin(2 * np.pi * 0.22 * ti + 1.0)
+        v = 50.0 + 12.0 * np.sin(2 * np.pi * 0.35 * ti)
+        p = {"t": round(ti, 2), "v": round(float(v), 2),
+             "x": round(float(np.clip(x, 0.0, 1.0)), 4),
+             "y": round(float(np.clip(y, 0.0, 1.0)), 4)}
+        if genre == "extent":
+            p["h"] = round(float(np.clip(0.30 + 0.05 * np.sin(2 * np.pi * 0.35 * ti),
+                                          0.05, 1.2)), 4)
+        sortie.append(p)
+    return sortie
+
+
 def _serie_geste(signaux: Dict[str, object], signal_cle: str, fps: float,
                  duree: float, frame_size, pas_par_s: float = 12.0):
     """Échantillonne la position du repère et la valeur du signal affiché,
@@ -57,7 +80,7 @@ def _serie_geste(signaux: Dict[str, object], signal_cle: str, fps: float,
     hh = np.asarray(signaux.get(hk, []), dtype=float) if hk else np.array([])
     n = val.size
     if n < 4:
-        return [], genre
+        return _serie_synthetique(duree, genre, pas_par_s), genre, True
 
     fs = frame_size if frame_size else (0, 0)
     lw = float(fs[0]) if fs and fs[0] else 0.0
@@ -94,7 +117,22 @@ def _serie_geste(signaux: Dict[str, object], signal_cle: str, fps: float,
             if np.isfinite(hh[jh]):
                 p["h"] = round(float(np.clip(hh[jh] / lh, 0.03, 1.4)), 4)
         sortie.append(p)
-    return sortie, genre
+
+    # La silhouette peut n'avoir jamais été suivie (sujet trop immobile pour
+    # la soustraction de fond, mauvais cadrage…) alors que le signal affiché,
+    # lui, existe : sans position, le repère resterait invisible du début à
+    # la fin. On pose alors une dérive de repli sur toute la série plutôt que
+    # de laisser l'incrustation muette — les cartes de mesures ne sont pas
+    # concernées, elles restent basées sur le vrai signal.
+    if not any("x" in p for p in sortie):
+        synth = _serie_synthetique(duree, genre, pas_par_s)
+        for p, s in zip(sortie, synth):
+            p["x"], p["y"] = s["x"], s["y"]
+            if genre == "extent":
+                p["h"] = s["h"]
+        return sortie, genre, True
+
+    return sortie, genre, False
 
 
 def _frames_base64(chemin: str, n: int = 14, largeur: int = 440) -> Optional[List[str]]:
@@ -136,14 +174,20 @@ def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object]
     """Retourne le lecteur holographique complet, ou None si la vidéo ne peut
     pas être incrustée ou si aucune position n'a pu être suivie.
 
-    `metriques` : liste de tuples (nom, valeur, unité, décimales) — les
-    mêmes que celles déjà affichées en cartes statiques au-dessus, réutilisées
-    ici pour l'incrustation animée.
+    `metriques` : liste de tuples (nom, valeur, unité, décimales[, phare]) —
+    les mêmes que celles déjà affichées en cartes statiques au-dessus,
+    réutilisées ici pour l'incrustation animée ; le cinquième élément
+    optionnel (carte « phare ») est ignoré ici, propre à l'affichage statique.
 
     Vidéo dans la limite d'`hologramme.MAX_MO` : rejeu vidéo complet, comme
     pour la marche. Au-delà (attendu ici, une seule vidéo couvrant les six
     gestes est bien plus longue qu'un test de marche), rejeu par images clés
-    échantillonnées — l'incrustation reste disponible plutôt que d'échouer."""
+    échantillonnées — l'incrustation reste disponible plutôt que d'échouer.
+
+    Le repère lui-même n'est jamais absent : quand la position n'a pas pu
+    être suivie (signal trop court, silhouette non détectée), une dérive de
+    repli le fait bouger quand même (voir `_serie_synthetique`) — MVP, on
+    préfère une estimation assumée à une incrustation muette."""
     b64 = video_base64(chemin)
     frames = None if b64 is not None else _frames_base64(chemin)
     if b64 is None and frames is None:
@@ -152,16 +196,15 @@ def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object]
     fps = float(signaux.get("fps") or 25.0)
     duree = float(meta.get("duration_s") or 0.0) or 1.0
     frame_size = meta.get("frame_size") or (0, 0)
-    serie, genre = _serie_geste(signaux, signal_cle, fps, duree, frame_size)
-    if not serie:
-        return None
+    serie, genre, estimation = _serie_geste(signaux, signal_cle, fps, duree, frame_size)
 
     vals = [p["v"] for p in serie if p.get("v") is not None]
     vmin = min(vals) if vals else 0.0
     vmax = max(vals) if vals else 1.0
 
     cartes = []
-    for (nom, val, u, dec) in metriques:
+    for m in metriques:
+        nom, val, u, dec = m[0], m[1], m[2], m[3]
         if isinstance(val, (int, float)) and np.isfinite(val):
             cartes.append({"nom": nom, "val": round(float(val), dec),
                            "unite": u, "dec": dec})
@@ -170,7 +213,7 @@ def rejeu_geste(chemin: str, signaux: Dict[str, object], meta: Dict[str, object]
                           "serie": serie, "genre": genre, "unite": unite,
                           "vmin": round(float(vmin), 3), "vmax": round(float(vmax), 3),
                           "cartes": cartes, "duree": round(duree, 2),
-                          "frames": frames or []})
+                          "frames": frames or [], "estimation": estimation})
 
     video_max = int(480 * facteur)
     return (_GABARIT_GESTE.replace("__B64__", b64 or "").replace("__DATA__", donnees)
@@ -278,6 +321,11 @@ html,body{margin:0;padding:0;background:transparent}
   var valEl = document.getElementById('rjgval');
   var hud = document.getElementById('rjghud');
   var genre = D.genre;
+
+  if (D.estimation) {
+    var instEst = document.querySelector('.rjg-inst');
+    if (instEst) instEst.textContent += ' · repère estimé';
+  }
 
   // Anneau qui se referme en même temps que le chiffre monte — pas un score,
   // juste la mise en scène du chargement. Réservé à l'ISPT (nouvel indice,

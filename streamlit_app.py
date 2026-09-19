@@ -493,6 +493,53 @@ TESTS_GESTES = [
 ]
 
 
+st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Vidéo</p>',
+            unsafe_allow_html=True)
+st.caption("Une seule vidéo suffit pour les sept tests : Gait, Core Hold, "
+           "Bone Impact, Flexibility, Balance, Sit-to-Stand et Free Motion.")
+video_geste = st.file_uploader(
+    "Vidéo à analyser", key="geste_video_partage",
+    help="Une seule vidéo suffit : chaque onglet ci-dessous l'analyse pour son "
+         "propre geste.")
+
+video_id_actuel = getattr(video_geste, "file_id", None)
+if video_id_actuel is None and video_geste is not None:
+    video_id_actuel = (video_geste.name, video_geste.size)
+
+if video_id_actuel != st.session_state.get("_gv_id"):
+    ancien = st.session_state.get("_gv_path")
+    if ancien and os.path.exists(ancien):
+        os.remove(ancien)
+    st.session_state.pop("_gv_marche", None)
+    for _t in TESTS_GESTES:
+        st.session_state.pop(f"_gv_res_{_t['cle']}", None)
+        st.session_state.pop(f"_gv_signal_{_t['cle']}", None)
+        st.session_state.pop(f"_gv_vue_{_t['cle']}", None)
+    st.session_state["_gv_id"] = video_id_actuel
+    st.session_state["_gv_path"] = None
+    if video_geste is not None:
+        if os.path.splitext(video_geste.name)[1].lower() not in EXTENSIONS_VIDEO:
+            st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
+                        'Formats acceptés : MP4, MOV, AVI, MKV, WebM, M4V.</div>',
+                        unsafe_allow_html=True)
+        else:
+            _suffixe = os.path.splitext(video_geste.name)[1] or ".mp4"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=_suffixe) as _tmp:
+                _tmp.write(video_geste.getbuffer())
+                st.session_state["_gv_path"] = _tmp.name
+
+chemin_geste = st.session_state.get("_gv_path")
+
+if chemin_geste:
+    st.caption(f"Vidéo chargée : {video_geste.name} — commune aux sept onglets, "
+               "jamais conservée au-delà de cette session. Pour l'enlever, "
+               "utilisez le ×  du champ ci-dessus.")
+else:
+    st.markdown('<p class="iv-cap" style="margin:0 0 18px">La vidéo est '
+                'analysée puis supprimée, jamais conservée sur nos '
+                'serveurs.</p>', unsafe_allow_html=True)
+
+
 with st.sidebar:
     st.markdown('<p class="iv-lab" style="margin-bottom:10px">Réglages</p>',
                 unsafe_allow_html=True)
@@ -526,52 +573,6 @@ with st.sidebar:
                         help="0 = mauvaise forme perçue, 10 = excellente forme")
     q_douleur = st.slider("Douleur, là maintenant", 0, 10, 5,
                           help="0 = aucune douleur, 10 = douleur maximale")
-
-    st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Vidéo</p>',
-                unsafe_allow_html=True)
-    st.caption("Une seule vidéo suffit pour les sept tests : Gait, Core Hold, "
-               "Bone Impact, Flexibility, Balance, Sit-to-Stand et Free Motion.")
-    video_geste = st.file_uploader(
-        "Vidéo à analyser", key="geste_video_partage",
-        help="Une seule vidéo suffit : chaque onglet ci-dessous l'analyse pour son "
-             "propre geste.")
-
-    video_id_actuel = getattr(video_geste, "file_id", None)
-    if video_id_actuel is None and video_geste is not None:
-        video_id_actuel = (video_geste.name, video_geste.size)
-
-    if video_id_actuel != st.session_state.get("_gv_id"):
-        ancien = st.session_state.get("_gv_path")
-        if ancien and os.path.exists(ancien):
-            os.remove(ancien)
-        st.session_state.pop("_gv_marche", None)
-        for _t in TESTS_GESTES:
-            st.session_state.pop(f"_gv_res_{_t['cle']}", None)
-            st.session_state.pop(f"_gv_signal_{_t['cle']}", None)
-            st.session_state.pop(f"_gv_vue_{_t['cle']}", None)
-        st.session_state["_gv_id"] = video_id_actuel
-        st.session_state["_gv_path"] = None
-        if video_geste is not None:
-            if os.path.splitext(video_geste.name)[1].lower() not in EXTENSIONS_VIDEO:
-                st.markdown('<div class="iv-msg iv-msg--stop"><b>Format non reconnu.</b> '
-                            'Formats acceptés : MP4, MOV, AVI, MKV, WebM, M4V.</div>',
-                            unsafe_allow_html=True)
-            else:
-                _suffixe = os.path.splitext(video_geste.name)[1] or ".mp4"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=_suffixe) as _tmp:
-                    _tmp.write(video_geste.getbuffer())
-                    st.session_state["_gv_path"] = _tmp.name
-
-    chemin_geste = st.session_state.get("_gv_path")
-
-    if chemin_geste:
-        st.caption(f"Vidéo chargée : {video_geste.name} — commune aux sept onglets, "
-                   "jamais conservée au-delà de cette session. Pour l'enlever, "
-                   "utilisez le ×  du champ ci-dessus.")
-    else:
-        st.markdown('<p class="iv-cap" style="margin:0 0 18px">La vidéo est '
-                    'analysée puis supprimée, jamais conservée sur nos '
-                    'serveurs.</p>', unsafe_allow_html=True)
 
 
 onglets = st.tabs(["Gait"] + [_t["titre"] for _t in TESTS_GESTES])

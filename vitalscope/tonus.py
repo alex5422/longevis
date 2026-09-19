@@ -39,7 +39,7 @@ def hold(centroid: np.ndarray, trunk_y: np.ndarray, bbox: np.ndarray,
     n = len(valid)
     vide = {"gainage_duree_s": 0.0, "gainage_stabilite": float("nan"),
             "gainage_alignement": float("nan"), "gainage_score": float("nan")}
-    if n < int(2 * fps):
+    if n < int(1.5 * fps):
         return vide
 
     cx = dsp.interp_nan(np.where(valid, centroid[:, 0], np.nan))
@@ -61,13 +61,15 @@ def hold(centroid: np.ndarray, trunk_y: np.ndarray, bbox: np.ndarray,
 
     a, b = meilleur
     duree = (b - a) / fps
-    if duree < 2.0:
+    if duree < 1.2:
         return {**vide, "gainage_duree_s": round(duree, 1)}
 
     # segment tenu, mais silhouette jamais détectée dedans (sujet trop
     # immobile pour la soustraction de fond, mauvais cadrage…) : pas de
-    # calcul possible, on le dit plutôt que de produire un chiffre creux
-    if int(np.sum(valid[a:b])) < max(3, int(0.5 * fps)):
+    # calcul possible, on le dit plutôt que de produire un chiffre creux.
+    # Seuil assoupli (MVP) : mieux vaut une estimation sur peu de points
+    # qu'un score vide dès que la détection est imparfaite.
+    if int(np.sum(valid[a:b])) < max(2, int(0.3 * fps)):
         return {**vide, "gainage_duree_s": round(duree, 1)}
 
     ty = _smooth(dsp.interp_nan(np.where(valid, trunk_y, np.nan))[a:b], fps)

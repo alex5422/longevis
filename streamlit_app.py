@@ -204,6 +204,11 @@ section[data-testid="stSidebar"] *{color:var(--text)}
 .iv-foot{font-size:12px;color:var(--faint);line-height:1.8;margin-top:26px;
  font-weight:300}
 .iv-foot b{color:var(--dim);font-weight:500}
+/* champ de dépôt en français : Streamlit impose son anglais */
+[data-testid="stFileUploaderDropzoneInstructions"] span{font-size:0!important}
+[data-testid="stFileUploaderDropzoneInstructions"] span::after{content:"MP4, MOV, WebM… jusqu'à 400 Mo";font-size:.8rem}
+[data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p{font-size:0!important}
+[data-testid="stFileUploader"] button [data-testid="stMarkdownContainer"] p::after{content:"Choisir une vidéo";font-size:.9rem}
 </style>
 """
 st.markdown(STYLE, unsafe_allow_html=True)
@@ -386,6 +391,54 @@ st.markdown('<span class="iv-inst">Longevity Institute · Metrology of Vitality<
             'l\'autonomie — un onglet par geste, aucun matériel supplémentaire.</p>',
             unsafe_allow_html=True)
 
+
+# ── accès réservé aux testeurs ─────────────────────────────────────────
+#  Comme Topos, OrthoScope, DanceTracker et Kinimo, VitalScope s'ouvre avec
+#  un identifiant et un mot de passe pendant les essais. Ils se règlent dans
+#  Streamlit Cloud → l'application → Settings → Secrets :
+#      VITALSCOPE_IDENTIFIANT = "vitalscope"
+#      VITALSCOPE_MOT_DE_PASSE = "VitalScope-2026"
+#  Sans ces secrets, l'accès reste libre : un oubli ne casse rien.
+import hmac
+
+
+def _secret(nom):
+    try:
+        return str(st.secrets.get(nom, "") or "")
+    except Exception:
+        return ""
+
+
+def _acces_accorde():
+    attendu_mdp = _secret("VITALSCOPE_MOT_DE_PASSE")
+    if not attendu_mdp or st.session_state.get("_acces_ok"):
+        return True
+    attendu_id = _secret("VITALSCOPE_IDENTIFIANT")
+    st.markdown('<p class="iv-lab" style="margin:28px 0 4px">Accès réservé aux testeurs</p>'
+                '<p class="iv-cap" style="margin:0 0 12px">L\'identifiant et le mot de passe '
+                'figurent dans le message qui vous a invité. Ils sont sensibles aux '
+                'majuscules.</p>', unsafe_allow_html=True)
+    with st.form("acces_testeurs"):
+        ident = st.text_input("Identifiant")
+        mdp = st.text_input("Mot de passe", type="password")
+        entrer = st.form_submit_button("Entrer")
+    if entrer:
+        bon_id = (not attendu_id) or hmac.compare_digest(ident.strip().encode(),
+                                                        attendu_id.encode())
+        bon_mdp = hmac.compare_digest(mdp.encode(), attendu_mdp.encode())
+        if bon_id and bon_mdp:
+            st.session_state["_acces_ok"] = True
+            st.rerun()
+        st.markdown('<div class="iv-msg iv-msg--stop"><b>Identifiant ou mot de passe '
+                    'incorrect.</b> Vérifiez les majuscules.</div>', unsafe_allow_html=True)
+    st.markdown('<p class="iv-foot">Besoin d\'aide : cdelong@orange.fr</p>',
+                unsafe_allow_html=True)
+    return False
+
+
+if not _acces_accorde():
+    st.stop()
+
 EXTENSIONS_VIDEO = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
 
 TAILLE_REJEU_FACTEUR = {"compact": 0.7, "normal": 0.9, "grand": 1.15, "immense": 1.5}
@@ -497,12 +550,30 @@ TESTS_GESTES = [
 
 st.markdown('<p class="iv-lab" style="margin:24px 0 4px">Vidéo</p>',
             unsafe_allow_html=True)
-st.caption("Une seule vidéo suffit pour les sept tests : Gait, Core Hold, "
-           "Bone Impact, Flexibility, Balance, Sit-to-Stand et Free Motion.")
+st.caption("Déposez la vidéo une fois : elle sert à tous les onglets. Ouvrez ensuite "
+           "l'onglet du geste qu'elle montre — Gait pour la marche, Balance pour "
+           "l'équilibre, Sit-to-Stand pour le lever de chaise…")
 video_geste = st.file_uploader(
     "Vidéo à analyser", key="geste_video_partage",
-    help="Une seule vidéo suffit : chaque onglet ci-dessous l'analyse pour son "
-         "propre geste.")
+    help="Chaque onglet ci-dessous mesure son propre geste : filmez le geste "
+         "de l'onglet que vous allez ouvrir.")
+
+# ── le fichier est-il rejouable par un navigateur ? ────────────────────
+#  Les mesures sortent d'OpenCV, qui décode tout, y compris l'HEVC des
+#  iPhone. L'incrustation, elle, s'appuie sur la balise <video> du
+#  navigateur, qui ne sait pas lire l'HEVC : elle reste à readyState 0,
+#  écran noir, sans la moindre erreur. On préfère le dire franchement, et
+#  dire quoi faire, plutôt que de laisser quelqu'un devant un rectangle
+#  muet en se demandant ce qu'il a raté.
+def _video_rejouable(chemin):
+    if not chemin or hologramme is None:
+        return True
+    try:
+        return bool(hologramme.conteneur_sur(chemin)
+                    and hologramme.codec_lisible_navigateur(chemin))
+    except Exception:
+        return True
+
 
 video_id_actuel = getattr(video_geste, "file_id", None)
 if video_id_actuel is None and video_geste is not None:
@@ -532,6 +603,7 @@ if video_id_actuel != st.session_state.get("_gv_id"):
 
 chemin_geste = st.session_state.get("_gv_path")
 
+
 if chemin_geste:
     st.caption(f"Vidéo chargée : {video_geste.name} — commune aux sept onglets, "
                "jamais conservée au-delà de cette session. Pour l'enlever, "
@@ -548,7 +620,7 @@ with st.expander("Réglages & ressenti du jour"):
     taille = st.number_input("Taille du sujet (m)", value=1.72, min_value=0.5,
                              max_value=2.5, step=0.01,
                              help="Environ 6 % d'erreur sur la vitesse.")
-    age = st.number_input("Âge du sujet (ans)", value=0, min_value=0, max_value=110,
+    age = st.number_input("Âge du sujet (ans) — 0 : comparaison aux adultes", value=0, min_value=0, max_value=110,
                           step=1,
                           help="0 = comparaison à la population adulte. Renseigné, "
                                "les scores sont comparés à la classe d'âge et l'écart "
@@ -688,9 +760,20 @@ with onglets[0]:
                                 'le compteur de pas suivent l\'image.</p>',
                                 unsafe_allow_html=True)
                 else:
-                    st.markdown('<p class="iv-cap">Vidéo trop lourde pour le rejeu incrusté '
-                                '(28 Mo maximum). Les mesures restent complètes.</p>',
-                                unsafe_allow_html=True)
+                    #  Deux causes possibles, et une seule était nommée : on
+                    #  envoyait compresser un fichier de trois mégaoctets dont
+                    #  le seul tort était d'être encodé en HEVC.
+                    st.markdown(
+                        ('<p class="iv-cap"><b>Format non rejouable par le navigateur.</b> '
+                         'Les mesures sont complètes — elles passent par un décodeur qui '
+                         'lit tout. Seule l\'incrustation reste noire, car la balise vidéo '
+                         'ne sait pas lire ce format (HEVC le plus souvent). Pour la '
+                         'retrouver : enregistrez en MP4 / H.264 — sur iPhone, Réglages → '
+                         'Appareil photo → Formats → « Le plus compatible ».</p>')
+                        if not _video_rejouable(chemin_geste) else
+                        ('<p class="iv-cap">Vidéo trop lourde pour le rejeu incrusté '
+                         '(28 Mo maximum). Les mesures restent complètes.</p>'),
+                        unsafe_allow_html=True)
 
             if bio:
                 st.markdown('<p class="iv-h">Biomarqueurs · Kinexa Longevity Institute</p>',
@@ -970,14 +1053,18 @@ for _test, _onglet in zip(TESTS_GESTES, onglets[1:]):
                                     height=rejeu_beta.hauteur_composant_geste(_facteur_g),
                                     scrolling=False)
                 else:
-                    st.markdown('<p class="iv-cap">L\'incrustation n\'a pas pu être '
-                                'générée pour cette vidéo. Les mesures restent '
-                                'complètes.</p>', unsafe_allow_html=True)
+                    st.markdown(_AVERT_CODEC if not _video_rejouable(chemin_geste)
+                                else '<p class="iv-cap">L\'incrustation n\'a pas pu être générée pour cette vidéo. Les mesures restent complètes.</p>',
+                                unsafe_allow_html=True)
 
 
-st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
+# Masquées pendant les essais : cinq cases « à venir » donnaient une
+# impression d'inachevé. Passer à True pour les réafficher.
+AFFICHER_MESURES_A_VENIR = False
+if AFFICHER_MESURES_A_VENIR:
+  st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
            unsafe_allow_html=True)
-st.markdown(
+  st.markdown(
     '<div class="iv-soon-list">'
     '<div class="iv-soon-item"><div><b>Biologie sanguine</b>'
     '<span class="iv-soon-desc">Marqueurs inflammatoires, lipides, glycémie, '

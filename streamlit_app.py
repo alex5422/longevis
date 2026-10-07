@@ -1058,33 +1058,187 @@ for _test, _onglet in zip(TESTS_GESTES, onglets[1:]):
                                 unsafe_allow_html=True)
 
 
-# Masquées pendant les essais : cinq cases « à venir » donnaient une
-# impression d'inachevé. Passer à True pour les réafficher.
-AFFICHER_MESURES_A_VENIR = False
-if AFFICHER_MESURES_A_VENIR:
-  st.markdown('<p class="iv-h" style="margin-top:56px">Biologie & autres mesures</p>',
-           unsafe_allow_html=True)
-  st.markdown(
-    '<div class="iv-soon-list">'
-    '<div class="iv-soon-item"><div><b>Biologie sanguine</b>'
-    '<span class="iv-soon-desc">Marqueurs inflammatoires, lipides, glycémie, '
-    'hormones</span></div><span class="tag t-av">à venir</span></div>'
-    '<div class="iv-soon-item"><div><b>Cardio-respiratoire</b>'
-    '<span class="iv-soon-desc">Tension artérielle, VO2max, fréquence cardiaque '
-    'au repos</span></div><span class="tag t-av">à venir</span></div>'
-    '<div class="iv-soon-item"><div><b>Composition corporelle</b>'
-    '<span class="iv-soon-desc">Masse grasse, masse musculaire, tour de '
-    'taille</span></div><span class="tag t-av">à venir</span></div>'
-    '<div class="iv-soon-item"><div><b>Sommeil</b>'
-    '<span class="iv-soon-desc">Durée, qualité, régularité</span></div>'
-    '<span class="tag t-av">à venir</span></div>'
-    '<div class="iv-soon-item"><div><b>Cognition</b>'
-    '<span class="iv-soon-desc">Temps de réaction, mémoire de travail</span></div>'
-    '<span class="tag t-av">à venir</span></div>'
-    '</div>'
-    '<p class="iv-cap" style="margin:14px 0 0">Cet espace est réservé aux futures '
-    'mesures biologiques et cognitives, pour compléter à terme les biomarqueurs '
-    'issus de la vidéo.</p>', unsafe_allow_html=True)
+# ─────────────────────────────────────────────────────────────────────
+# BILAN COMPLÉMENTAIRE — facultatif, saisi à la main.
+# Chaque valeur est rangée dans une zone à partir de seuils publiés
+# (OMS, ESH 2023, ESC 2019, ADA, HAS, Ashwell). 0 = non renseigné.
+# Aucun diagnostic : trois zones seulement, « favorable »,
+# « à surveiller », « à discuter avec votre médecin ».
+# ─────────────────────────────────────────────────────────────────────
+ZONE_OK, ZONE_SURV, ZONE_MED = "favorable", "à surveiller", "à discuter avec votre médecin"
+_ZONE_TAG = {ZONE_OK: "t-ok", ZONE_SURV: "t-nr", ZONE_MED: "t-ko"}
+
+
+def _zone3(v, lim_surv, lim_med, croissant=True):
+    """Trois zones par deux seuils. croissant=True : plus haut = moins bon."""
+    if croissant:
+        return ZONE_OK if v < lim_surv else (ZONE_SURV if v < lim_med else ZONE_MED)
+    return ZONE_OK if v >= lim_surv else (ZONE_SURV if v >= lim_med else ZONE_MED)
+
+
+def evaluer_complements(d, taille_m=None, age=0):
+    """d : dict de valeurs saisies (0 ou None = absent). Renvoie une liste
+    de (rubrique, nom, valeur affichée, zone, repère) et le résumé."""
+    def ok(k):
+        v = d.get(k)
+        return v is not None and v > 0
+
+    sexe = d.get("sexe")
+    lignes = []
+
+    # Composition corporelle
+    if ok("poids") and taille_m and taille_m > 0:
+        imc = d["poids"] / (taille_m ** 2)
+        if imc < 18.5:
+            z = ZONE_SURV
+        elif imc < 25:
+            z = ZONE_OK
+        elif imc < 30:
+            z = ZONE_SURV
+        else:
+            z = ZONE_MED
+        lignes.append(("Composition", "Indice de masse corporelle", f"{imc:.1f} kg/m²", z,
+                       "18,5 à 24,9 (OMS)"))
+    if ok("tour_taille") and taille_m and taille_m > 0:
+        rtt = (d["tour_taille"] / 100) / taille_m
+        lignes.append(("Composition", "Tour de taille / taille", f"{rtt:.2f}",
+                       _zone3(rtt, 0.5, 0.6), "moins de 0,50"))
+
+    # Cardio-respiratoire
+    if ok("tas") and ok("tad"):
+        s, di = d["tas"], d["tad"]
+        if s >= 140 or di >= 90:
+            z = ZONE_MED
+        elif s >= 130 or di >= 85:
+            z = ZONE_SURV
+        else:
+            z = ZONE_OK
+        lignes.append(("Cardio", "Tension artérielle", f"{s:.0f}/{di:.0f} mmHg", z,
+                       "moins de 130/85 (ESH 2023)"))
+    if ok("fc_repos"):
+        fc = d["fc_repos"]
+        z = ZONE_MED if (fc > 100 or fc < 40) else (ZONE_SURV if fc > 80 else ZONE_OK)
+        lignes.append(("Cardio", "Fréquence cardiaque au repos", f"{fc:.0f} /min", z,
+                       "50 à 80 /min ; plus bas chez le sportif"))
+
+    # Mode de vie
+    if ok("activite"):
+        lignes.append(("Mode de vie", "Activité physique modérée", f"{d['activite']:.0f} min/sem",
+                       _zone3(d["activite"], 150, 75, croissant=False), "150 min/sem ou plus (OMS)"))
+    if ok("sommeil"):
+        h = d["sommeil"]
+        haut = 8 if age >= 65 else 9
+        z = ZONE_OK if 7 <= h <= haut else (ZONE_SURV if 6 <= h <= haut + 1 else ZONE_MED)
+        lignes.append(("Mode de vie", "Sommeil", f"{h:.1f} h/nuit", z, f"7 à {haut} h"))
+    if d.get("tabac") in ("oui", "non"):
+        lignes.append(("Mode de vie", "Tabac", d["tabac"],
+                       ZONE_OK if d["tabac"] == "non" else ZONE_MED, "non-fumeur"))
+
+    # Biologie (g/L, %, mg/L comme sur les comptes rendus français)
+    if ok("glycemie"):
+        lignes.append(("Biologie", "Glycémie à jeun", f"{d['glycemie']:.2f} g/L",
+                       _zone3(d["glycemie"], 1.10, 1.26), "moins de 1,10 g/L (HAS)"))
+    if ok("hba1c"):
+        lignes.append(("Biologie", "Hémoglobine glyquée", f"{d['hba1c']:.1f} %",
+                       _zone3(d["hba1c"], 5.7, 6.5), "moins de 5,7 % (ADA)"))
+    if ok("ldl"):
+        lignes.append(("Biologie", "LDL-cholestérol", f"{d['ldl']:.2f} g/L",
+                       _zone3(d["ldl"], 1.16, 1.90), "moins de 1,16 g/L (ESC, risque faible)"))
+    if ok("hdl"):
+        seuil = 0.50 if sexe == "femme" else 0.40
+        lignes.append(("Biologie", "HDL-cholestérol", f"{d['hdl']:.2f} g/L",
+                       ZONE_OK if d["hdl"] >= seuil else ZONE_SURV,
+                       f"{seuil:.2f} g/L ou plus".replace(".", ",")))
+    if ok("tg"):
+        lignes.append(("Biologie", "Triglycérides", f"{d['tg']:.2f} g/L",
+                       _zone3(d["tg"], 1.50, 2.00), "moins de 1,50 g/L"))
+    if ok("crp"):
+        c = d["crp"]
+        lignes.append(("Biologie", "CRP ultrasensible", f"{c:.1f} mg/L",
+                       _zone3(c, 1.0, 3.0),
+                       "moins de 1 mg/L ; au-delà de 10, inflammation aiguë à recontrôler"))
+
+    n = len(lignes)
+    resume = None
+    if n:
+        n_ok = sum(1 for l in lignes if l[3] == ZONE_OK)
+        n_med = sum(1 for l in lignes if l[3] == ZONE_MED)
+        resume = {"renseignes": n, "favorables": n_ok, "a_discuter": n_med,
+                  "score": round(100 * n_ok / n)}
+    return lignes, resume
+
+
+st.markdown('<p class="iv-h" style="margin-top:56px">Bilan complémentaire</p>',
+            unsafe_allow_html=True)
+st.caption("Facultatif. Remplissez seulement ce que vous connaissez : chaque valeur "
+           "est placée dans une zone de référence. Laissez 0 pour « non renseigné ».")
+
+with st.expander("Saisir mes valeurs"):
+    _d = {}
+    _d["sexe"] = st.radio("Sexe", ["non précisé", "femme", "homme"], horizontal=True,
+                          key="bc_sexe")
+    st.markdown('<p class="iv-lab" style="margin:16px 0 4px">Composition corporelle</p>',
+                unsafe_allow_html=True)
+    _c1, _c2 = st.columns(2)
+    _d["poids"] = _c1.number_input("Poids (kg)", 0.0, 300.0, 0.0, 0.5, key="bc_poids")
+    _d["tour_taille"] = _c2.number_input("Tour de taille (cm)", 0.0, 250.0, 0.0, 1.0,
+                                         key="bc_tt", help="Mesuré à mi-distance entre "
+                                         "la dernière côte et le haut de la hanche.")
+    st.markdown('<p class="iv-lab" style="margin:16px 0 4px">Cardio-respiratoire</p>',
+                unsafe_allow_html=True)
+    _c1, _c2, _c3 = st.columns(3)
+    _d["tas"] = _c1.number_input("Tension haute (mmHg)", 0, 260, 0, 1, key="bc_tas")
+    _d["tad"] = _c2.number_input("Tension basse (mmHg)", 0, 160, 0, 1, key="bc_tad")
+    _d["fc_repos"] = _c3.number_input("Pouls au repos (/min)", 0, 220, 0, 1, key="bc_fc")
+    st.markdown('<p class="iv-lab" style="margin:16px 0 4px">Mode de vie</p>',
+                unsafe_allow_html=True)
+    _c1, _c2, _c3 = st.columns(3)
+    _d["activite"] = _c1.number_input("Activité modérée (min/semaine)", 0, 3000, 0, 10,
+                                      key="bc_act", help="Marche rapide, vélo, natation…")
+    _d["sommeil"] = _c2.number_input("Sommeil (h/nuit)", 0.0, 16.0, 0.0, 0.5, key="bc_som")
+    _tab = _c3.radio("Tabac", ["non précisé", "non", "oui"], horizontal=True, key="bc_tab")
+    _d["tabac"] = _tab if _tab != "non précisé" else None
+    st.markdown('<p class="iv-lab" style="margin:16px 0 4px">Biologie '
+                '(dernière prise de sang)</p>', unsafe_allow_html=True)
+    _c1, _c2, _c3 = st.columns(3)
+    _d["glycemie"] = _c1.number_input("Glycémie à jeun (g/L)", 0.0, 6.0, 0.0, 0.01,
+                                      format="%.2f", key="bc_gly")
+    _d["hba1c"] = _c2.number_input("HbA1c (%)", 0.0, 15.0, 0.0, 0.1, key="bc_hba")
+    _d["crp"] = _c3.number_input("CRP ultrasensible (mg/L)", 0.0, 300.0, 0.0, 0.1,
+                                 key="bc_crp")
+    _c1, _c2, _c3 = st.columns(3)
+    _d["ldl"] = _c1.number_input("LDL-cholestérol (g/L)", 0.0, 6.0, 0.0, 0.01,
+                                 format="%.2f", key="bc_ldl")
+    _d["hdl"] = _c2.number_input("HDL-cholestérol (g/L)", 0.0, 3.0, 0.0, 0.01,
+                                 format="%.2f", key="bc_hdl")
+    _d["tg"] = _c3.number_input("Triglycérides (g/L)", 0.0, 20.0, 0.0, 0.01,
+                                format="%.2f", key="bc_tg")
+    st.caption("Unités des comptes rendus français. En mmol/L : LDL et HDL × 0,387, "
+               "triglycérides × 0,885, glycémie × 0,18 donnent des g/L.")
+
+_lignes_bc, _resume_bc = evaluer_complements(_d, taille_m=taille, age=age)
+if _resume_bc:
+    st.markdown(
+        '<div class="iv-grid">'
+        + carte("Repères favorables", _resume_bc["score"], " %",
+                note=f'{_resume_bc["favorables"]} sur {_resume_bc["renseignes"]} '
+                     'valeurs renseignées', hero=True, dec=0)
+        + carte("À discuter avec votre médecin", _resume_bc["a_discuter"], "",
+                dec=0)
+        + '</div>', unsafe_allow_html=True)
+    _html_bc = ['<div class="iv-soon-list">']
+    for _rub, _nom, _val, _zone, _rep in _lignes_bc:
+        _val = _val.replace(".", ",")
+        _html_bc.append(
+            f'<div class="iv-soon-item"><div><b>{_nom} : {_val}</b>'
+            f'<span class="iv-soon-desc">{_rub} · repère : {_rep}</span></div>'
+            f'<span class="tag {_ZONE_TAG[_zone]}">{_zone}</span></div>')
+    _html_bc.append('</div>')
+    st.markdown("".join(_html_bc), unsafe_allow_html=True)
+    st.caption("La taille utilisée est celle des réglages ci-dessus. Un repère "
+               "défavorable isolé ne signifie pas une maladie ; il se discute avec "
+               "votre médecin, qui connaît votre situation.")
+
 
 st.markdown('<p class="iv-foot">Aucun diagnostic, aucune prédiction d\'espérance '
             'de vie. Les repères proviennent d\'études de population : ils '
